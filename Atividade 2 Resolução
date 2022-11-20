@@ -1,0 +1,108 @@
+Questão 1)
+
+media = 1674
+desviop = 212.5
+dist_normal = st.norm(media, desviop)
+
+alter_a = dist_normal.ppf(0.80)
+print(f'O tempo de espera que representa o 80º percentil é: {round(alter_a)} dias.')
+
+alter_b = dist_normal.ppf(0.25)
+print(f'O tempo de espera que representa o primeiro quartil é: {round(alter_b)} dias.')
+
+alter_c = dist_normal.ppf(1-0.1)
+print(f'O menor tempo de espera que pode estar nos 10% maiores é: {round(alter_c)} dias.')
+
+alter_d = dist_normal.ppf(0.05)
+print(f'O maior tempo de espera por transplante que pode estar nos 5% menores é: {round(alter_d)} dias.')
+
+
+
+
+Questão 2)
+
+media = 1170
+desviop = 200
+n_amostras = 32
+
+desviopX = desviop/(n_amostras**0.5)
+terras = st.norm(media, desviopX)
+
+alter_a =  terras.cdf(1200)
+print(f'Menor que US$ 1200: {alter_a*100:.2f}%')
+
+alter_b =  terras.sf(1275)
+print(f'Maior que US$ 1275: {alter_b*100:.2f}%')
+
+alter_c =  terras.cdf(1250)-terras.cdf(1100)
+print(f'Entre US$1100 e US$1250: {alter_c*100:.2f}%')
+
+
+
+
+
+Questão 3)
+
+# Conjunto de dados
+dados = pd.Series([18.41, 16.91, 16.83, 17.72, 15.54, 15.56,
+                   18.01, 19.11, 19.79, 18.32, 18.65, 20.71,
+                   20.66, 21.04, 21.74, 22.13, 21.96, 22.16,
+                   22.86, 20.86, 20.74, 22.05, 21.42, 22.34,
+                   22.83, 24.34, 17.97, 14.47, 19.06, 18.42,
+                   20.85, 21.43, 21.97, 21.81])
+
+x_barra = dados.mean()
+sigma = 2.62
+conf = 0.95
+
+n_amostras = 34
+sigmaX = sigma/(n_amostras**0.5)
+
+IC_a = st.norm.interval(alpha=conf, loc=x_barra, scale=sigmaX)
+print(f'(a): ({IC_a[0]:.2f}, {IC_a[1]:.2f})')
+
+grau_lib = n_amostras-1
+desvio_dados = dados.std()
+IC_b = st.t.interval(alpha=conf, df=grau_lib, loc=x_barra, scale=desvio_dados/(n_amostras**0.5))
+print(f'(b): ({IC_b[0]:.2f}, {IC_b[1]:.2f})')
+
+
+# Representação gráfica
+plt.figure(figsize=(8,2))
+plt.hlines(0.5, IC_a[0], IC_a[1], colors='b')
+plt.hlines(1.0, IC_b[0], IC_b[1], colors='r')
+ax = plt.gca()
+ax.get_yaxis().set_visible(False)
+plt.ylim(0, 1.75)
+plt.vlines(x_barra, 0, 1.75, colors='k', linestyles='dashed')
+plt.title('Intervalos de Confiança 95%')
+plt.xlabel('US$')
+plt.legend(['sigma conhecido', 'sigma desconhecido'], loc='upper left')
+plt.show()
+
+
+
+
+
+Questão 4)
+
+# Conjunto de dados
+arruelas = pd.Series([0.422, 0.424, 0.424, 0.430, 0.419,
+                      0.424, 0.420, 0.424, 0.425, 0.425,
+                      0.423, 0.431, 0.437, 0.422, 0.434])
+
+amostras, confianca, desvio_arruelas = 15, 0.95, arruelas.std(ddof=1) 
+
+def intconf_variancia(amostras, confianca, desvio_arruelas):
+  distch2 = st.chi2(df=amostras-1)
+  x2L = distch2.ppf((1-confianca)/2)
+  x2R = distch2.ppf((1+confianca)/2)
+  
+  inf = (amostras-1)*desvio_arruelas**2/x2R
+  sup = (amostras-1)*desvio_arruelas**2/x2L
+  return(inf,sup)
+
+
+ICsigma2 = intconf_variancia(amostras, conf, desvio_arruelas)
+print(f'A variancia populacional é: ({ICsigma2[0]:.6f}, {ICsigma2[1]:.6f})')
+print(f'O desvio padrao populacional é: ({ICsigma2[0]**0.5:.6f}, {ICsigma2[1]**0.5:.6f})') 
