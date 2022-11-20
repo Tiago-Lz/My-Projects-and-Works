@@ -1,0 +1,355 @@
+Atividade descritiva 01:
+
+Constantes de construção são definidas através da sua sigla e seu valor:
+MIN, MAX, AMP = 700, 1300, 100
+
+Determinação das classes se é dada pelo intervalo range:
+classes = pd.interval_range(start=MIN, end=MAX, freq=AMP)
+
+Pontos médios em uma classe:
+pts_medios = [classe.mid for classe in classes]
+
+Construção de um histograma:
+histograma = aluguel.hist(bins=[classe.left for classe in classes]+
+                          [classes[-1].right],
+                          color='blue', edgecolor='black',
+                          grid=False, figsize=(8,8))
+
+Atributos de um histograma:
+indices = [(i,j) for i in range(2) for j in range(2)]
+for (i,j) in indices:
+  histograma[i][j].set(xticks=pts_medios, yticks=list(range(6)),
+                       xlabel='Aluguel mensal [US$]', ylabel='Frequência')
+
+
+Método Agg:
+aluguel.agg(['mean', 'median', 'std'])
+
+Quartis:
+display(aluguel.quantile([0.25, 0.5, 0.75]))
+
+BoxPlots:
+box = aluguel.boxplot(showmeans=True)
+plt.title('Distribuição dos aluguéis por área')
+plt.ylabel('Aluguel [US$]')
+
+Exemplo de espaço amostral:
+- #Liste as opções#
+fabricantes = ['Ford', 'GM', 'Honda']
+tamanhos = ['Compacto', 'Médio']
+cores = ['Branco', 'Vermelho', 'Preto', 'Verde']
+
+- #Criação do espaço amostral#
+esp_amostral = [resultado for resultado in itertools.product(fabricantes, tamanhos, cores)]
+
+- #Visualização dos elementos#
+print('** Espaço amostral **')
+for resultado in esp_amostral:
+  print(resultado)
+
+- #Número de elementos do espaço amostral#
+elementos = len(esp_amostral)
+print(f'\nExistem {elementos} elementos no espaço amostral.')
+
+Cálculo de Probabilidade:
+evento_1 = [escolha for escolha in esp_amostral if 'Ford' in escolha]
+print('** Evento 1: Carro novo é um Ford **')
+for resultado in evento_1:
+  print(resultado)
+prob_1 = len(evento_1)/len(esp_amostral)
+print(f'Probabilidade do evento 1 = {prob_1*100:.2f}%\n')
+
+Distribuição Conjunta de Frequências: 
+dist_conj = pd.crosstab(index=esportes['gênero'],
+                        columns=esportes['esporte'], margins=True)
+display(dist_conj)
+
+Variância e desvio padrão:
+# Inserção da coluna Vendas^2*Probabilidades
+tabela['x^2P(x)'] = tabela['Vendas']**2 * tabela['P(x)']
+display(tabela)
+# Cálculo da variância da distribuição
+variancia = tabela['x^2P(x)'].sum() - media**2
+print(f'A variância da distribuição é de {variancia:.1f} (vendas/dia)^2.')
+# Cálculo do desvio padrão da distribuição
+desvio = variancia**(1/2)
+print(f'O desvio padrão da distribuição é de {desvio:.1f} vendas/dia.')
+
+
+Distribuição de uma probabilidade binominal:
+# Condições do experimento probabilístico binomial
+exp = 7
+sucesso = 0.46
+val_x = list(range(exp + 1))
+# Geração da tabela de distribuição de probabilidade binomial
+dist_binomial = pd.DataFrame({'Sucessos': val_x})
+dist_binomial['Probabilidade'] = binom.pmf(val_x, exp, sucesso)
+display(dist_binomial)
+# Representação gráfica da distribuição discreta de probabilidades
+# Gráfico de segmentos verticais (caules)
+print('** Gráfico de segmentos verticais (caules) **')
+dist_stem = plt.stem(dist_binomial['Sucessos'],
+                     dist_binomial['Probabilidade'], use_line_collection=True)
+plt.xlabel('Indivíduos que usam o celular para acessar redes sociais')
+plt.ylabel('Probabilidades')
+plt.title('Distribuição discreta de probabilidades')
+plt.grid()
+plt.show()
+# Gráfico de barras verticais
+print('** Gráfico de barras verticais **')
+dist_bar = plt.bar(dist_binomial['Sucessos'],
+                   dist_binomial['Probabilidade'])
+plt.xlabel('Indivíduos que usam o celular para acessar redes sociais')
+plt.ylabel('Probabilidades')
+plt.title('Distribuição discreta de probabilidades')
+plt.grid(False)
+plt.show()
+
+Parâmetros populacionais em uma probabilidade binominal:
+# ** Cálculo dos parâmetros usando as fórmulas **
+# Cálculo da média (mu = np)
+media = exp*sucesso
+# Cálculo da variância (sigma^2 = np(1-p))
+variancia = exp*sucesso*(1-sucesso)
+# Cálculo do desvio padrão
+desv_pad = variancia**(1/2)
+# Exibição dos resultados
+print('** Parâmetros populacionais - Fórmulas **')
+print(f'Média = {media:.2f} indivíduos')
+print(f'Variância = {variancia:.2f} indivíduos^2')
+print(f'Desvio padrão = {desv_pad:.2f} indivíduos')
+# Cálculo dos parâmetros usando o método stats de binom
+med, var = binom.stats(exp, sucesso)
+print('** Parâmetros populacionais - stats **')
+print(f'Média = {med:.2f} ; Variância = {var:.2f}')
+
+***** A Curva Normal *****
+# Criação de uma distribuição normal com média 1.5 e desvio padrão 2.0
+media, desvpad = 1.5, 2.0
+distnorm = stats.norm(media, desvpad)
+### Representação gráfica
+# Geração de QUANT pontos no intervalo entre INICIO e FIM
+QUANT, INICIO, FIM = 500, media-3*desvpad, media+3*desvpad
+x = np.linspace(INICIO, FIM, QUANT)
+# Cálculo da fdp normal para os valores de do vetor x
+y = distnorm.pdf(x)
+# Gráfico
+plt.figure(figsize=(8, 6))
+plt.plot(x, y, 'b')
+plt.xlim(INICIO, FIM)
+plt.ylim(0, distnorm.pdf(media)+0.01)
+plt.title('Distribuição Normal')
+plt.xlabel('Valores da variável aleatória x')
+plt.ylabel('Probabilidade')
+plt.scatter([media - desvpad, media, media + desvpad],
+            [distnorm.pdf(media-desvpad), distnorm.pdf(media), distnorm.pdf(media+desvpad)])
+plt.vlines([media- desvpad, media, media + desvpad], 0, distnorm.pdf(media),
+           colors='k', linestyles='dashed')
+plt.grid()
+plt.show()
+
+
+Probabilidades na curva normal padrão:
+
+# Definição da distribuição normal padrão
+media, std = 0, 1
+normpad = stats.norm(media, std)
+# Área acumulada que corresponde a um escore-z de –2,19
+area1 = normpad.cdf(-2.19)
+print(f'A área acumulada correspondente a z = -2.19 é {area1:.4f}.')
+# Área acumulada que corresponde a um escore-z de 2,17
+area2 = normpad.cdf(2.17)
+print(f'A área acumulada correspondente a z = 2.17 é {area2:.4f}.')
+# Área sob a curva normal padrão à direita de z = 1,06
+area3 = normpad.sf(1.06) # Isso equivale a area3 = 1 - normpad.cdf(1.06)
+print(f'A área sob a curva normal à direita de z = 1.06 é {area3:.4f}.')
+# Área sob a curva normal padrão entre z = –1,5 e z = 1,25
+area4 = normpad.cdf(1.25) - normpad.cdf(-1.5)
+print(f'A área sob a curva normal entre z = -1.5 e z = 1.25 é {area4:.4f}.')
+
+
+Escore-z:
+
+# Construindo a distribuição normal padrão
+mu, std = 0, 1
+normpad = stats.norm(mu, std)
+# Escore-z que tenha 96,16% da área de distribuição à sua direita
+z1 = normpad.ppf(1-0.9616)
+print(f'z1 = {z1:.3f}')
+print(f'Conferindo... Área à direita = {normpad.sf(z1)*100:.2f}%')
+# Escore-z para o qual 95% da área de distribuição esteja entre –z e z
+z2 = normpad.ppf(0.05)
+print(f'z2 = {z2:.3f}')
+print(f'Conferindo... Área à esquerda de z = {z2:.3f} é {normpad.cdf(z2)*100:.2f}%')
+print(f'Conferindo... Área à direita de z = {-z2:.3f} é {normpad.sf(-z2)*100:.2f}%')
+
+
+Distribuições amostrais:
+# Chave para permutação
+chave = [1, 3, 5, 7]
+# Geração de todas as amostras possíveis de tamanho 2
+am2a2 = list(it.product(chave, repeat=2))
+# Criação de tabela com possíveis amostras, acompanhadas de suas médias
+amostras = pd.DataFrame({'Amostras': am2a2,
+                        'Média': [(x1+x2)/2 for (x1, x2) in am2a2]})
+display(amostras)
+
+
+Probabilidades e o TLC:
+# Determinação da média e desvio padrão amostrais
+mu, std, n = 9126, 1500, 9
+mu_x, std_x = mu, std/(n**(1/2))
+# Geração da distribuição normal amostral (TLC)
+gastos = stats.norm(mu_x, std_x)
+# Cálculo da probabilidade
+prob = gastos.cdf(9400)
+print(f'A probabilidade de que os gastos sejam inferiores a US$ 94k é de {prob*100:.2f}%.')
+
+
+Intervalo de Confiança com sigma conhecido:
+# Desvio padrão populacional conhecido
+sigma = 7.9
+# Nível de confiança
+confianca = 0.95
+# Desvio padrão da distribuiução normal das médias amostrais
+n_amostras = 30
+sigma_x = sigma/n_amostras**0.5
+# Intervalo de confiança de 95% para a média populacional
+int_confianca = st.norm.interval(alpha=confianca, loc=x_barra, scale=sigma_x)
+print('*** Intervalo de conficança 95% para a média populacional ***')
+print(f'({int_confianca[0]:.2f}, {int_confianca[1]:.2f})')
+
+
+Com alteração do nível de confiança:
+# Níveis de confiança
+niveis = [0.75, 0.85, 0.90]
+# Intervalo de confiança para a média populacional
+intervalos = [st.norm.interval(alpha=nivel, loc=x_barra, scale=sigma_x) for nivel in niveis]
+# Exibição dos intervalos e construção gráfica
+plt.figure(figsize=(8,3))
+ALTURAS = [0.5, 1, 1.5]
+CORES = ['r', 'g', 'b']
+print('*** Intervalos de conficança para a média populacional ***')
+for i in range(len(niveis)):
+  print(f'{niveis[i]*100}% --> ({intervalos[i][0]:.2f}, {intervalos[i][1]:.2f})')
+  plt.hlines(ALTURAS[i], intervalos[i][0], intervalos[i][1], colors=CORES[i])
+# Atributos do gráfico
+ax = plt.gca()
+ax.get_yaxis().set_visible(False)
+plt.ylim(0, 2)
+plt.vlines(x_barra, 0, 2, colors='k', linestyles='dashed')
+plt.title('Intervalos de Confiança')
+plt.xlabel('Horas trabalhadas nas mercearias')
+plt.legend(['75%', '85%', '90%','Média'], loc='lower left')
+plt.show()
+
+Intervalo de confiança com o sigma desconhecido:
+# Níveis de confiança
+niveis = [0.90, 0.99]
+# Atributos da distribuição
+x_barra, std_amostral = 162, 10
+num_amostras = 16
+graus_liberdade = num_amostras - 1
+# Intervalo de confiança para a média populacional
+intervalos = [st.t.interval(alpha=nivel, df=graus_liberdade, loc=x_barra,
+                            scale=std_amostral/num_amostras**0.5) for nivel in niveis]
+# Exibição dos intervalos
+print('*** Intervalos de conficança para a média populacional ***')
+for i in range(len(niveis)):
+  print(f'{niveis[i]*100}% --> ({intervalos[i][0]:.2f}, {intervalos[i][1]:.2f})')
+
+
+Distribuição CHI-Quadrado:
+Se a variável aleatória x tem uma distribuição normal com desvio padrão σ, então
+χ2=(n−1)s²
+σ²
+resulta em uma distribuição qui-quadrado com n–1 graus de liberdade, para amostras de qualquer tamanho n>1.
+No Python, usaremos o método pdf (probability density function) da classe stats.chi2 (biblioteca scipy).
+
+# Geração da lista de graus de liberdade para a visualização (de 3 a 19)
+gl = list(range(3, 21, 2))
+# Geração de QUANT pontos no intervalo entre INICIO e FIM
+QUANT, INICIO, FIM = 750, 0, max(gl)*2
+# Tamanho da figura
+plt.figure(figsize=(10, 6))
+# Plotagem dos gráficos
+for grau in gl:
+  # Determinação da distribuição chi-quadrado, com o correspondente gl
+  chiquad = st.chi2(df=grau)
+  x = np.linspace(INICIO, FIM, QUANT)
+  # Determinação da função densidade de probabilidade
+  y = chiquad.pdf(x)
+  plt.plot(x, y, label='gl = '+ str(grau))
+# Atributos do gráfico
+plt.legend(frameon=True, fancybox=True, framealpha=1,
+           shadow=True, borderpad=1)
+plt.xlim(0, max(gl)*2)
+plt.title('Distribuições Chi-quadrado')
+plt.xlabel('Valores da variável aleatória x')
+plt.ylabel('Probabilidade')
+plt.grid(True)
+plt.show()
+
+
+Intervalos de confiança para o σ²e o σ :
+# Função para o cálculo do IC
+def intconf_variancia(amostras, confianca, s_amostral):
+  # Distribuição chi-quadrado
+  distchi2 = st.chi2(df=amostras-1)
+  # Determinação dos valores críticos
+  x2L = distchi2.ppf((1-confianca)/2)
+  x2R = distchi2.ppf((1+confianca)/2)
+  # Extremos do IC para variância
+  inf = (amostras-1)*s_amostral**2/x2R
+  sup = (amostras-1)*s_amostral**2/x2L
+  return (inf, sup)
+
+# Intervalos de confiança
+amostras, confianca, desvpad = 30, [0.95, 0.90], 1.20
+# Lista de intervalos de confiança
+ICsigma2 = [intconf_variancia(amostras, conf, desvpad) for conf in confianca]
+# Exibição dos IC para variância e desvio padrão
+for i in range(len(confianca)):
+  print(f'- Nível de confiança de {confianca[i]*100}%:')
+  print(f'Variância: ({ICsigma2[i][0]:.3f}, {ICsigma2[i][1]:.3f})')
+  print(f'Desvio Padrão: ({ICsigma2[i][0]**0.5:.3f}, {ICsigma2[i][1]**0.5:.3f})')
+
+Teste Unilateral a Esquerda:
+# H0: mu >= 13 segundos  -- ENUNCIADO
+# Ha: mu < 13 segundos (afirmação) -- ENUNCIADO
+p_valor = teste_z(est_amostral=12.9, n_amostras=32, alpha=0.01,
+                  mu=13, sigma=0.19, teste='esq')
+
+Teste Unilateral a Direita:
+# H0: mu <= 35 mph  -- ENUNCIADO
+# Ha: mu > 35 mph (afirmação) -- ENUNCIADO
+p_valor = teste_z(est_amostral=36, n_amostras=100, alpha=0.05,
+                  mu=35, sigma=4, teste='dir')
+
+Teste Bilateral:
+# H0: mu = 21500 (afirmação)  -- ENUNCIADO
+# Ha: mu != 21500  -- ENUNCIADO
+p_valor = teste_z(est_amostral=20695, n_amostras=25, alpha=0.05,
+                  mu=21500, sigma=2250, teste='bilateral')
+
+Trabalhando com um Conjunto de Dados:
+# Dados relativos aos níveis de dióxido de carbono
+NO2 = pd.Series([24, 36, 44, 35, 44, 34, 29, 40, 39, 43, 41, 32, 33, 29,
+                 29, 43, 25, 39, 25, 42, 29, 22, 22, 25, 14, 15, 14, 29,
+                 25, 27, 22, 24, 18, 17])  -- ENUNCIADO
+# Hipóetes do teste      } Enunciado
+# H0: mu <= 32 ppb       } Enunciado
+# H1: mu > 32 ppb (afirmação) } Enunciado
+# Nível de significância } Enunciado
+alpha = 0.06
+# Teste de hipótese usando a função ztest
+z_score, p_valor = ztest(x1=NO2, x2=None, value=32, alternative='larger')
+# Conclusão do teste
+if p_valor <= alpha:
+  print(f'Hipótese nula rejeitada ao nível de significância {alpha*100}%')
+else:
+  print(f'Hipótese nula NÃO rejeitada ao nível de significância {alpha*100}%')
+# Teste de hipótese usando a função teste_z
+print()
+p_valor = teste_z(est_amostral=NO2.mean(), n_amostras=len(NO2), alpha=alpha,
+                  mu=32, sigma=9, teste='dir')
