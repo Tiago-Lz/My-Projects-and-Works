@@ -1,0 +1,16 @@
+(defn imposto-retido
+  "Se salario abaixo ou igual a 1000 reais, não será cobtado imposto. 
+   Acima de 1000 e abaixo de 2000, será cobrado 10% do valor.
+   Acima ou igual a 2000, o imposto será de 20%."
+
+  [salario]
+  (let [imposto-primeira-faixa 0 
+        imposto-segunda-faixa  0.1
+        imposto-terceira-faixa 0.2]
+    (if (<= salario 1000)
+      (* salario imposto-primeira-faixa)
+      (if (< salario 2000)
+        (* salario imposto-segunda-faixa)
+        (* salario imposto-terceira-faixa)))) 
+        
+        )
