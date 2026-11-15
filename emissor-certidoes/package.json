@@ -1,0 +1,15 @@
+{
+  "name": "emissor-certidoes",
+  "version": "1.0.0",
+  "description": "Sistema local para solicitar certidões cíveis, criminais e fiscais nos portais oficiais e arquivar os documentos expedidos.",
+  "private": true,
+  "type": "commonjs",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}

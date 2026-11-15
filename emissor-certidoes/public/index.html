@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Emissor de Certidões</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <header class="topo">
+    <div>
+      <h1>Emissor de Certidões</h1>
+      <p>Pedidos nos portais oficiais · dados cifrados nesta máquina</p>
+    </div>
+    <button id="btn-bloquear" class="secundario" hidden>Bloquear cofre</button>
+  </header>
+
+  <main id="tela-cofre" class="cartao estreito" hidden>
+    <h2 id="cofre-titulo">Desbloquear cofre</h2>
+    <p id="cofre-texto" class="apoio"></p>
+    <form id="form-cofre">
+      <label>Senha mestra
+        <input id="senha" type="password" autocomplete="current-password" minlength="8" required>
+      </label>
+      <label id="rotulo-confirma" hidden>Confirme a senha
+        <input id="senha2" type="password" autocomplete="new-password" minlength="8">
+      </label>
+      <p id="cofre-erro" class="erro" role="alert"></p>
+      <button type="submit">Entrar</button>
+    </form>
+  </main>
+
+  <main id="tela-app" hidden>
+    <section class="cartao">
+      <h2>Novo pedido</h2>
+      <form id="form-pedido" novalidate>
+        <fieldset class="alternador">
+          <legend>Pesquisado</legend>
+          <label><input type="radio" name="tipo" value="PF" checked> Pessoa física</label>
+          <label><input type="radio" name="tipo" value="PJ"> Pessoa jurídica</label>
+        </fieldset>
+        <div class="grade">
+          <label class="largo"><span id="rotulo-nome">Nome completo</span>
+            <input name="nome" required maxlength="200" autocomplete="off">
+          </label>
+          <label><span id="rotulo-doc">CPF</span>
+            <input name="documento" required inputmode="numeric" autocomplete="off">
+          </label>
+          <label class="so-pf">Data de nascimento
+            <input name="dataNascimento" type="date">
+          </label>
+          <label class="so-pf largo">Nome da mãe
+            <input name="nomeMae" maxlength="200" autocomplete="off">
+          </label>
+          <label class="so-pf largo">Nome do pai
+            <input name="nomePai" maxlength="200" autocomplete="off">
+          </label>
+          <label class="so-pf">RG
+            <input name="rg" maxlength="30" autocomplete="off">
+          </label>
+          <label>E-mail para o portal (opcional)
+            <input name="email" type="email" maxlength="120" autocomplete="off">
+          </label>
+        </div>
+
+        <h3>Certidões</h3>
+        <div class="filtros">
+          <label>Natureza
+            <select id="filtro-natureza">
+              <option value="">Todas</option>
+              <option value="civel">Cível</option>
+              <option value="criminal">Criminal</option>
+              <option value="fiscal">Fiscal / dívida ativa</option>
+              <option value="trabalhista">Trabalhista</option>
+            </select>
+          </label>
+          <label>UF
+            <select id="filtro-uf"><option value="">Todas</option></select>
+          </label>
+          <span id="contagem" class="apoio"></span>
+        </div>
+        <div id="catalogo"></div>
+
+        <p id="pedido-erro" class="erro" role="alert"></p>
+        <button type="submit">Solicitar certidões selecionadas</button>
+      </form>
+
+      <details id="novo-portal">
+        <summary>Cadastrar outro portal oficial</summary>
+        <form id="form-portal" class="grade">
+          <label>Órgão <input name="orgao" required maxlength="80" placeholder="TJPR"></label>
+          <label>UF <input name="uf" maxlength="2" placeholder="PR"></label>
+          <label class="largo">Nome da certidão <input name="nome" required maxlength="160"></label>
+          <label class="largo">Endereço do formulário (https) <input name="url" type="url" required placeholder="https://"></label>
+          <label>Esfera
+            <select name="esfera">
+              <option value="estadual">Justiça Estadual</option>
+              <option value="federal">Justiça Federal</option>
+              <option value="superior">Tribunais superiores</option>
+              <option value="policia">Polícia</option>
+              <option value="fiscal">Fiscal / dívida ativa</option>
+            </select>
+          </label>
+          <fieldset class="largo marcadores">
+            <legend>Natureza</legend>
+            <label><input type="checkbox" name="natureza" value="civel"> Cível</label>
+            <label><input type="checkbox" name="natureza" value="criminal"> Criminal</label>
+            <label><input type="checkbox" name="natureza" value="fiscal"> Fiscal</label>
+            <label><input type="checkbox" name="natureza" value="trabalhista"> Trabalhista</label>
+          </fieldset>
+          <p id="portal-erro" class="erro largo" role="alert"></p>
+          <button type="submit" class="secundario">Adicionar ao catálogo</button>
+        </form>
+      </details>
+    </section>
+
+    <section class="cartao">
+      <h2>Pedidos</h2>
+      <div id="pedidos"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
