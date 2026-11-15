@@ -16,6 +16,8 @@ const FORM = `<!doctype html><meta charset="utf-8"><form method="post" action="/
   <label>Data de nascimento <input name="f4" maxlength="10"></label>
   <label>Código da imagem (captcha) <input name="f5"></label>
   <input name="usuarioNome">
+  <select name="modelo"><option value="">Selecione</option><option value="6">CERTIDÃO DE DISTRIBUIÇÃO CÍVEL</option><option value="9">FALÊNCIAS, CONCORDATAS E RECUPERAÇÕES</option></select>
+  <label><input type="radio" name="tipo" value="c" checked> Cível</label><label><input type="radio" name="tipo" value="e"> Fins eleitorais</label>
   <button id="enviar">Emitir</button></form>`;
 
 function portalFalso() {
@@ -39,7 +41,7 @@ test('solicita no portal, captura o PDF expedido e guarda cifrado', async () => 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cert-'));
   const cat = path.join(dir, 'cat.json');
   fs.writeFileSync(cat, JSON.stringify([
-    { id: 'falso', esfera: 'estadual', uf: 'ZZ', orgao: 'TJ-Teste', nome: 'Certidão', natureza: ['civel'], pessoas: ['PF'], url: portal.url, enviar: '#enviar' },
+    { id: 'falso', esfera: 'estadual', uf: 'ZZ', orgao: 'TJ-Teste', nome: 'Certidão', natureza: ['civel'], pessoas: ['PF'], url: portal.url, enviar: '#enviar', opcoes: ['falencia', 'eleitora'] },
   ]));
   const app = criarServidor({ dirDados: path.join(dir, 'dados'), porta: 0, catalogoPadrao: cat, automacao: { headless: true, intervaloMs: 200, tempoLimiteMs: 60000 } });
   const porta = await app.iniciar();
@@ -69,7 +71,7 @@ test('solicita no portal, captura o PDF expedido e guarda cifrado', async () => 
     assert.equal(p.status, 'concluido', p.mensagem);
     assert.equal(p.arquivo.origem, 'portal-oficial');
     assert.equal(p.arquivo.caminho, undefined);
-    assert.deepEqual(portal.recebidos[0], { f1: 'Maria da Silva', f2: '529.982.247-25', nmMae: 'Ana da Silva', f4: '28/02/1990', f5: '', usuarioNome: '' });
+    assert.deepEqual(portal.recebidos[0], { f1: 'Maria da Silva', f2: '529.982.247-25', nmMae: 'Ana da Silva', f4: '28/02/1990', f5: '', usuarioNome: '', modelo: '9', tipo: 'e' });
 
     const pdf = Buffer.from(await (await chamar('GET', `/api/pedidos/${p.id}/arquivo`)).arrayBuffer());
     assert.ok(pdf.toString().startsWith('%PDF-'));

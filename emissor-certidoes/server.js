@@ -35,7 +35,7 @@ function criarServidor({ dirDados, porta, automacao = {}, catalogoPadrao } = {})
     const t = String(req.headers['x-sessao'] || '');
     return Boolean(sessao) && t.length === sessao.length && crypto.timingSafeEqual(Buffer.from(t), Buffer.from(sessao));
   };
-  const visao = (p) => ({ ...p, certidao: { id: p.certidao.id, orgao: p.certidao.orgao, nome: p.certidao.nome, url: p.certidao.url }, arquivo: p.arquivo && { ...p.arquivo, caminho: undefined } });
+  const visao = (p) => ({ ...p, certidao: { id: p.certidao.id, orgao: p.certidao.orgao, nome: p.certidao.nome, url: p.certidao.url, rotulo: p.certidao.rotulo }, arquivo: p.arquivo && { ...p.arquivo, caminho: undefined } });
 
   function bloquear() {
     pedidos.interromper();

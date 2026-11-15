@@ -70,7 +70,7 @@
   });
 
   // ---------- Catálogo ----------
-  const ESFERAS = { federal: 'Justiça Federal', estadual: 'Justiça Estadual', superior: 'Tribunais superiores', policia: 'Polícia', fiscal: 'Fazenda e dívida ativa' };
+  const ESFERAS = { federal: 'Justiça Federal', estadual: 'Justiça Estadual', trabalho: 'Justiça do Trabalho', superior: 'Tribunais superiores', mp: 'Ministério Público', policia: 'Polícia', fiscal: 'Fazenda e dívida ativa', registro: 'Junta comercial' };
   const tipoAtual = () => document.querySelector('input[name=tipo]:checked').value;
 
   function desenharCatalogo() {
@@ -157,7 +157,10 @@
     const url = URL.createObjectURL(blob);
     if (abrir) window.open(url, '_blank', 'noopener');
     else {
-      const nome = `${p.certidao.orgao}-${p.pessoa.documento}-${p.criadoEm.slice(0, 10)}.${p.arquivo.ext}`.replace(/[^\w.\-]+/g, '_');
+      // Padrão de nome: "TRF3 CIVIL ADALTO CPF.pdf"
+      const semAcento = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const primeiro = semAcento(p.pessoa.nome).split(' ')[0].toUpperCase();
+      const nome = `${p.certidao.rotulo || semAcento(p.certidao.orgao).toUpperCase()} ${primeiro} ${p.pessoa.tipo === 'PF' ? 'CPF' : 'CNPJ'}.${p.arquivo.ext}`.replace(/[^\w.\- ]+/g, '');
       h('a', { href: url, download: nome }).click();
     }
     setTimeout(() => URL.revokeObjectURL(url), 60000);

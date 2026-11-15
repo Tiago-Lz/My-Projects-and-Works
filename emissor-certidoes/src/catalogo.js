@@ -5,8 +5,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ESFERAS = ['federal', 'estadual', 'superior', 'policia', 'fiscal'];
-const NATUREZAS = ['civel', 'criminal', 'fiscal', 'trabalhista'];
+const ESFERAS = ['federal', 'estadual', 'trabalho', 'superior', 'mp', 'policia', 'fiscal', 'registro'];
+const NATUREZAS = ['civel', 'criminal', 'fiscal', 'trabalhista', 'cadastral'];
 
 class Catalogo {
   constructor(dirDados, arquivoPadrao = path.join(__dirname, '..', 'catalogo.json')) {

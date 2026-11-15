@@ -45,7 +45,10 @@ Variáveis opcionais: `PORTA` (padrão 8787) e `CERTIDOES_DADOS` (pasta dos dado
 ## Catálogo de portais
 
 `catalogo.json` traz TRFs 1 a 6 e a certidão unificada do CJF, Polícia Federal, STF, STJ,
-TST (CNDT), STM, TSE, 13 Tribunais de Justiça, Receita/PGFN e Sefaz/dívida ativa de SP e MG.
+TST (CNDT), STM, TSE, 12 Tribunais de Justiça, Receita/PGFN e Sefaz/dívida ativa de SP e MG.
+Para São Paulo há o conjunto completo de diligência: TJSP por modelo (cíveis, cíveis 10 anos,
+falências, inventários, criminais, execuções criminais), TRF3 (cível, criminal, fins
+eleitorais), TRT2 (CEAT, eletrônicos, físicos), MPF, MPT e JUCESP.
 
 Os endereços mudam com frequência e **não foram testados contra os portais reais** neste
 desenvolvimento: confira cada um no primeiro uso. Para outros tribunais ou estados, use
@@ -54,6 +57,8 @@ desenvolvimento: confira cada um no primeiro uso. Para outros tribunais ou estad
 | Campo | Uso |
 |---|---|
 | `seletores` | Seletor CSS por campo quando o reconhecimento automático falhar, ex.: `{ "cpf": "#nuCpf" }` |
+| `opcoes` | Termos para escolher o modelo da certidão em listas e botões de opção, ex.: `["falencia"]` |
+| `rotulo` | Prefixo do nome do arquivo baixado, ex.: `TRF3 CIVIL` gera `TRF3 CIVIL ADALTO CPF.pdf` |
 | `enviar` | Seletor do botão de envio, para portais **sem** CAPTCHA (envio automático) |
 
 Campos aceitos em `seletores`: `nome`, `documento`, `cpf`, `cnpj`, `nomeMae`, `nomePai`,

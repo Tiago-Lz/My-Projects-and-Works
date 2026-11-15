@@ -44,6 +44,34 @@ function marcarCampos(padroes) {
 }
 /* c8 ignore stop */
 
+// Executada dentro da página: escolhe o modelo/tipo de certidão em listas e botões
+// de opção. Cada termo de `opcoes` casa quando todas as suas palavras aparecem no
+// texto da opção, sem diferenciar acentos nem maiúsculas.
+/* c8 ignore start */
+function marcarOpcoes(opcoes) {
+  const limpar = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const casa = (texto) => { const t = limpar(texto); return opcoes.some((o) => limpar(o).split(/\s+/).every((p) => t.includes(p))); };
+  let n = 0;
+  for (const sel of document.querySelectorAll('select:not([data-cert-ok])')) {
+    if (sel.disabled || !sel.getClientRects().length) continue;
+    const op = [...sel.options].find((o) => casa(o.textContent));
+    if (!op) continue;
+    sel.setAttribute('data-cert-ok', '1');
+    if (sel.value !== op.value) { sel.value = op.value; sel.dispatchEvent(new Event('input', { bubbles: true })); sel.dispatchEvent(new Event('change', { bubbles: true })); n++; }
+  }
+  const grupos = new Set();
+  for (const r of document.querySelectorAll('input[type=radio]:not([data-cert-ok])')) {
+    if (r.disabled || grupos.has(r.name)) continue;
+    const texto = [...(r.labels || [])].map((l) => l.textContent).join(' ') || r.value;
+    if (!casa(texto)) continue;
+    grupos.add(r.name);
+    document.querySelectorAll(`input[type=radio][name="${CSS.escape(r.name)}"]`).forEach((x) => x.setAttribute('data-cert-ok', '1'));
+    if (!r.checked) { r.click(); n++; }
+  }
+  return n;
+}
+/* c8 ignore stop */
+
 function valoresPara(pessoa) {
   const pf = pessoa.tipo === 'PF';
   return {
@@ -74,8 +102,10 @@ function formatar(campo, valor, { tipo, maxLength }) {
   return valor;
 }
 
-async function preencherFrame(frame, valores, seletores) {
+async function preencherFrame(frame, valores, seletores, opcoes) {
   let preenchidos = 0;
+  // O modelo vem primeiro: em vários portais ele define quais campos aparecem.
+  if (opcoes && opcoes.length) preenchidos += await frame.evaluate(marcarOpcoes, opcoes);
   // Seletores explícitos do catálogo têm precedência sobre a heurística.
   for (const [campo, seletor] of Object.entries(seletores || {})) {
     await frame.locator(seletor).first()
@@ -173,7 +203,7 @@ class Execucao {
       const ciclo = async () => {
         for (const p of contexto.pages()) {
           for (const frame of p.frames()) {
-            const n = await preencherFrame(frame, valores, this.certidao.seletores).catch(() => 0);
+            const n = await preencherFrame(frame, valores, this.certidao.seletores, this.certidao.opcoes).catch(() => 0);
             if (n && this.certidao.enviar && !enviado) {
               enviado = true; // só para portais sem CAPTCHA, configurados explicitamente
               await frame.locator(this.certidao.enviar).first().click().catch(() => { enviado = false; });

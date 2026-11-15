@@ -38,7 +38,7 @@ class Pedidos {
       criadoEm: new Date().toISOString(),
       concluidoEm: null,
       pessoa,
-      certidao: { id: c.id, orgao: c.orgao, nome: c.nome, url: c.url, seletores: c.seletores, enviar: c.enviar },
+      certidao: { id: c.id, orgao: c.orgao, nome: c.nome, url: c.url, rotulo: c.rotulo, seletores: c.seletores, opcoes: c.opcoes, enviar: c.enviar },
       status: 'fila',
       mensagem: 'Aguardando na fila.',
       arquivo: null,
