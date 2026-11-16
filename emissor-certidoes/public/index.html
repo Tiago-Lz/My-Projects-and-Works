@@ -22,7 +22,13 @@
     <h2 id="login-titulo">Entrar</h2>
     <p id="login-texto" class="apoio"></p>
     <form id="form-login">
-      <label class="so-primeiro" hidden>Seu nome
+      <label data-campo="chave" hidden>Chave de convite
+        <input name="chave" maxlength="40" autocomplete="off" autocapitalize="characters" placeholder="XXXXX-XXXXX-XXXXX-XXXXX">
+      </label>
+      <label data-campo="escritorio" hidden>Nome do escritório
+        <input name="escritorio" maxlength="120" autocomplete="organization">
+      </label>
+      <label data-campo="nome" hidden>Seu nome
         <input name="nome" maxlength="120" autocomplete="name">
       </label>
       <label>Usuário
@@ -31,15 +37,54 @@
       <label>Senha
         <input name="senha" type="password" required minlength="8" autocomplete="current-password">
       </label>
-      <label class="so-primeiro" hidden>Confirme a senha
+      <label data-campo="senha2" hidden>Confirme a senha
         <input name="senha2" type="password" minlength="8" autocomplete="new-password">
       </label>
       <p id="login-erro" class="erro" role="alert"></p>
-      <button type="submit">Entrar</button>
+      <button id="login-botao" type="submit">Entrar</button>
     </form>
+    <div id="login-modos" class="modos">
+      <button type="button" class="discreto" data-modo="entrar">Já tenho acesso</button>
+      <button type="button" class="discreto" data-modo="convite">Tenho uma chave de convite</button>
+      <button type="button" class="discreto" data-modo="escritorio">Cadastrar meu escritório</button>
+    </div>
+  </main>
+
+  <main id="tela-dono" hidden>
+    <section class="cartao">
+      <h2>Visão geral</h2>
+      <div id="dono-totais" class="indicadores"></div>
+    </section>
+    <section class="cartao">
+      <h2>Escritórios</h2>
+      <p class="apoio">Altere valores e limites, registre mensalidades e suspenda contas. Os dados dos pesquisados e as certidões não ficam visíveis aqui.</p>
+      <div id="dono-contas"></div>
+    </section>
+    <section class="cartao">
+      <h2>Padrões para novos escritórios</h2>
+      <form id="form-config" class="grade">
+        <label>Mensalidade (R$) <input name="valor" type="number" min="0" step="0.01" required></label>
+        <label>Limite de usuários <input name="usuarios" type="number" min="1" step="1" required></label>
+        <label>Certidões por mês <input name="certidoes" type="number" min="0" step="1" required></label>
+        <label>Dias de teste gratuito <input name="teste" type="number" min="0" step="1" required></label>
+        <p id="config-msg" class="erro largo" role="status"></p>
+        <button type="submit" class="secundario">Salvar padrões</button>
+      </form>
+      <details>
+        <summary>Alterar minha senha</summary>
+        <form class="grade form-senha">
+          <label>Senha atual <input name="atual" type="password" required autocomplete="current-password"></label>
+          <label>Nova senha <input name="nova" type="password" required minlength="8" autocomplete="new-password"></label>
+          <label>Confirme a nova senha <input name="nova2" type="password" required minlength="8" autocomplete="new-password"></label>
+          <p class="erro largo senha-msg" role="status"></p>
+          <button type="submit" class="secundario">Alterar senha</button>
+        </form>
+      </details>
+    </section>
   </main>
 
   <main id="tela-app" hidden>
+    <p id="aviso-conta" class="faixa-aviso" role="alert" hidden></p>
     <section class="cartao">
       <h2>Novo pedido</h2>
       <form id="form-pedido" novalidate>
@@ -112,7 +157,8 @@
               <option value="trabalho">Justiça do Trabalho</option>
               <option value="superior">Tribunais superiores</option>
               <option value="mp">Ministério Público</option>
-              <option value="registro">Junta comercial</option>
+              <option value="controle">Órgãos de controle</option>
+              <option value="registro">Juntas comerciais e protestos</option>
               <option value="policia">Polícia</option>
               <option value="fiscal">Fiscal / dívida ativa</option>
             </select>
@@ -145,28 +191,23 @@
 
     <section class="cartao">
       <h2>Conta</h2>
+      <div id="conta-resumo"></div>
+      <div id="painel-equipe" hidden>
+        <h3>Equipe</h3>
+        <div id="usuarios"></div>
+        <button id="btn-convite" type="button" class="secundario">Gerar chave de convite</button>
+        <div id="convite-gerado" class="convite"></div>
+        <h3>Pagamentos registrados</h3>
+        <div id="pagamentos"></div>
+      </div>
       <details>
         <summary>Alterar minha senha</summary>
-        <form id="form-senha" class="grade">
+        <form class="grade form-senha">
           <label>Senha atual <input name="atual" type="password" required autocomplete="current-password"></label>
           <label>Nova senha <input name="nova" type="password" required minlength="8" autocomplete="new-password"></label>
           <label>Confirme a nova senha <input name="nova2" type="password" required minlength="8" autocomplete="new-password"></label>
-          <p id="senha-msg" class="erro largo" role="status"></p>
+          <p class="erro largo senha-msg" role="status"></p>
           <button type="submit" class="secundario">Alterar senha</button>
-        </form>
-      </details>
-      <details id="painel-usuarios" hidden>
-        <summary>Usuários do sistema</summary>
-        <div id="usuarios"></div>
-        <form id="form-usuario" class="grade">
-          <label>Nome <input name="nome" required maxlength="120" autocomplete="off"></label>
-          <label>Usuário <input name="usuario" required maxlength="32" autocomplete="off" autocapitalize="none"></label>
-          <label>Senha inicial <input name="senha" type="password" required minlength="8" autocomplete="new-password"></label>
-          <label>Perfil
-            <select name="perfil"><option value="operador">Operador</option><option value="admin">Administrador</option></select>
-          </label>
-          <p id="usuario-erro" class="erro largo" role="alert"></p>
-          <button type="submit" class="secundario">Cadastrar usuário</button>
         </form>
       </details>
     </section>

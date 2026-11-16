@@ -5,7 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ESFERAS = ['federal', 'estadual', 'trabalho', 'superior', 'mp', 'policia', 'fiscal', 'registro'];
+const ESFERAS = ['federal', 'estadual', 'trabalho', 'superior', 'mp', 'policia', 'fiscal', 'controle', 'registro'];
 const NATUREZAS = ['civel', 'criminal', 'fiscal', 'trabalhista', 'cadastral'];
 
 class Catalogo {

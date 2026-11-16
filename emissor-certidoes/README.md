@@ -10,14 +10,16 @@ físicas e jurídicas nos **portais oficiais** dos órgãos e arquivar os docume
 ## Como funciona
 
 1. Você faz login, informa os dados do pesquisado (PF ou PJ) e marca as certidões desejadas.
-2. Para cada uma, o sistema abre o portal oficial em uma janela do navegador e
-   preenche os campos que reconhece (nome, CPF/CNPJ, mãe, pai, nascimento, RG, e-mail).
-3. Você confere, resolve o CAPTCHA (o sistema **não** burla CAPTCHA) e envia.
-4. O PDF expedido é capturado automaticamente e fica em **Certidões guardadas** por
-   7 dias. Se o portal mostrar a certidão em HTML, use *Salvar a página aberta como
-   certidão* (o arquivo fica marcado como captura).
+2. Para cada uma, o sistema abre o portal oficial em uma janela do navegador, escolhe o
+   modelo da certidão, preenche os campos e **envia o pedido sozinho**.
+3. Se o portal tiver CAPTCHA, o sistema espera você resolvê-lo e então envia. Ele **não**
+   burla CAPTCHA. Essa é a única ação manual.
+4. A certidão é reconhecida onde quer que apareça: download, PDF aberto em outra aba ou
+   janela, PDF gerado no navegador, PDF embutido na página, ou página HTML (que é salva em
+   PDF e marcada como captura). Ela fica em **Certidões guardadas** por 7 dias.
 
-Os pedidos rodam em fila, um portal por vez.
+Os pedidos rodam em fila, um portal por vez. Se o sistema não reconhecer a certidão, há o
+botão *Salvar a página aberta como certidão*.
 
 ## Executável (Windows)
 
@@ -44,12 +46,21 @@ Para rodar sem empacotar: `npm install` e `npm start` (abre em http://127.0.0.1:
 Variáveis opcionais: `PORTA` (padrão 8787), `CERTIDOES_DADOS` (pasta dos dados) e
 `CERTIDOES_NAVEGADOR` (`msedge` ou `chrome`).
 
-## Login e usuários
+## Perfis de acesso
 
-O banco de dados (`emissor.db`, SQLite) guarda as contas. No primeiro acesso é criada a
-conta do administrador, que cadastra os demais usuários, redefine senhas e desativa contas.
-Operadores veem apenas as próprias certidões; administradores veem as de todos.
-As senhas são guardadas como hash scrypt com sal. A sessão expira após 30 minutos sem uso.
+| Perfil | Como entra | O que faz |
+|---|---|---|
+| **Dono do sistema** | Primeiro acesso | Vê escritórios, usuários, uso e mensalidades; altera valores e limites; registra pagamentos; suspende contas. Não emite certidões e não consegue abrir as dos clientes. |
+| **Administrador pagante** | *Cadastrar meu escritório* | Tem a conta do escritório (com período de teste), emite certidões, gera chaves de convite, gerencia os usuários da conta e vê as certidões de todos eles. |
+| **Usuário** | Chave de convite gerada pelo administrador | Emite certidões na conta do escritório e vê apenas as suas. |
+
+A emissão é bloqueada quando a mensalidade vence, a conta é suspensa ou o limite mensal de
+certidões é atingido. A chave de convite é aleatória, de uso único e vale 7 dias.
+
+**Limitação importante:** as contas ficam no banco local (`emissor.db`) desta instalação.
+O dono só enxerga escritórios cadastrados na mesma máquina. Para vender a escritórios
+diferentes, cada um na sua máquina, o cadastro de contas e mensalidades precisa ir para um
+servidor central; o pagamento hoje é registrado manualmente pelo dono.
 
 ## O que é e o que não é armazenado
 
@@ -69,11 +80,14 @@ As senhas são guardadas como hash scrypt com sal. A sessão expira após 30 min
 
 ## Catálogo de portais
 
-`catalogo.json` traz TRFs 1 a 6 e a certidão unificada do CJF, Polícia Federal, STF, STJ,
-TST (CNDT), STM, TSE, 12 Tribunais de Justiça, Receita/PGFN e Sefaz/dívida ativa de SP e MG.
-Para São Paulo há o conjunto completo de diligência: TJSP por modelo (cíveis, cíveis 10 anos,
-falências, inventários, criminais, execuções criminais), TRF3 (cível, criminal, fins
-eleitorais), TRT2 (CEAT, eletrônicos, físicos), MPF, MPT e JUCESP.
+`catalogo.json` traz 169 certidões: os 6 TRFs e a certidão unificada do CJF, os 27 Tribunais
+de Justiça, os 24 TRTs, STF, STJ, TST, STM, TSE, CNJ, Polícia Federal, MPF, MPT, MPM e os 27
+Ministérios Públicos estaduais, Receita/PGFN, FGTS, as 27 fazendas estaduais, TCU, CGU, IBAMA,
+as 27 juntas comerciais e a central de protestos.
+
+Cerca de metade das entradas (marcadas com `"conferir": true`) aponta para o **site do
+órgão**, não para o formulário da certidão: nesses casos navegue até o formulário e o sistema
+preenche e envia a partir dali. Substitua o endereço pelo do formulário quando o conhecer.
 
 Os endereços mudam com frequência e **não foram testados contra os portais reais** neste
 desenvolvimento: confira cada um no primeiro uso. Para outros tribunais ou estados, use
@@ -84,7 +98,7 @@ desenvolvimento: confira cada um no primeiro uso. Para outros tribunais ou estad
 | `seletores` | Seletor CSS por campo quando o reconhecimento automático falhar, ex.: `{ "cpf": "#nuCpf" }` |
 | `opcoes` | Termos para escolher o modelo da certidão em listas e botões de opção, ex.: `["falencia"]` |
 | `rotulo` | Prefixo do nome do arquivo baixado, ex.: `TRF3 CIVIL` gera `TRF3 CIVIL ADALTO CPF.pdf` |
-| `enviar` | Seletor do botão de envio, para portais **sem** CAPTCHA (envio automático) |
+| `enviar` | Seletor do botão de envio, quando o reconhecimento automático do botão falhar |
 
 Campos aceitos em `seletores`: `nome`, `documento`, `cpf`, `cnpj`, `nomeMae`, `nomePai`,
 `dataNascimento`, `rg`, `email`.
@@ -95,4 +109,4 @@ Campos aceitos em `seletores`: `nome`, `documento`, `cpf`, `cnpj`, `nomeMae`, `n
 npm test
 ```
 
-Cobrem validação de CPF/CNPJ, o banco (login, usuários, retenção) e o fluxo completo contra um portal simulado.
+Cobrem validação de CPF/CNPJ, o banco (perfis, convites, limites, mensalidades, retenção), o motor (envio automático, CAPTCHA, certidão em outra aba) e o fluxo completo, sempre contra portais simulados.

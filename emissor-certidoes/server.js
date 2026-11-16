@@ -40,7 +40,7 @@ function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {
     sessoes.delete(token);
     // Sem outra sessão do mesmo usuário, os pedidos dele (e os dados neles) são descartados.
     if (![...sessoes.values()].some((x) => x.usuario.id === s.usuario.id)) pedidos.esquecer(s.usuario.id);
-    s.chave.fill(0);
+    if (s.chave) s.chave.fill(0);
   }
   function abrirSessao({ usuario, chave }) {
     const token = crypto.randomBytes(32).toString('hex');
@@ -75,10 +75,19 @@ function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {
     const m = req.method;
     const s = sessaoDe(req);
 
-    if (rota === '/api/estado' && m === 'GET') return json(res, 200, { configurado: banco.temUsuarios(), usuario: s ? s.usuario : null, diasRetencao: DIAS_RETENCAO });
-    if (rota === '/api/configurar' && m === 'POST') {
+    if (rota === '/api/estado' && m === 'GET') return json(res, 200, { configurado: banco.temDono(), usuario: s ? s.usuario : null, diasRetencao: DIAS_RETENCAO });
+    // Três portas de entrada: o dono (uma única vez), o escritório pagante e o convidado.
+    if (rota === '/api/configurar' && m === 'POST') return json(res, 201, abrirSessao(banco.criarDono(await lerCorpo(req))));
+    if (rota === '/api/contas' && m === 'POST') {
+      if (!banco.temDono()) throw new Error('O sistema ainda não foi configurado pelo responsável.');
+      return json(res, 201, abrirSessao(banco.criarConta(await lerCorpo(req))));
+    }
+    if (rota === '/api/convites/usar' && m === 'POST') {
       const corpo = await lerCorpo(req);
-      return json(res, 201, abrirSessao(banco.criarPrimeiroAdmin(corpo)));
+      const ip = 'convite';
+      const n = falhas.get(ip) || 0;
+      await new Promise((r) => setTimeout(r, Math.min(n, 10) * 500)); // freia a adivinhação de chaves
+      try { const r = banco.usarConvite(corpo); falhas.delete(ip); return json(res, 201, abrirSessao(r)); } catch (e) { if (/convite/.test(e.message)) falhas.set(ip, n + 1); throw e; }
     }
     if (rota === '/api/entrar' && m === 'POST') {
       const corpo = await lerCorpo(req);
@@ -96,23 +105,41 @@ function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {
       return json(res, 200, {});
     }
 
-    // ---------- Usuários (somente administrador) ----------
-    if (rota.startsWith('/api/usuarios')) {
-      if (eu.perfil !== 'admin') return json(res, 403, { erro: 'Apenas administradores gerenciam usuários.' });
-      if (rota === '/api/usuarios' && m === 'GET') return json(res, 200, banco.usuarios());
-      if (rota === '/api/usuarios' && m === 'POST') return json(res, 201, banco.criarUsuario(await lerCorpo(req), s.chave));
-      const u = rota.match(/^\/api\/usuarios\/(\d+)\/(senha|ativo)$/);
-      if (u && m === 'POST') {
-        const id = Number(u[1]);
-        if (!banco.usuario(id)) return json(res, 404, { erro: 'Usuário não encontrado.' });
+    // ---------- Dono do sistema: contas, preços, limites e mensalidades ----------
+    if (rota.startsWith('/api/dono')) {
+      if (eu.perfil !== 'dono') return json(res, 403, { erro: 'Área restrita ao responsável pelo sistema.' });
+      if (rota === '/api/dono/resumo' && m === 'GET') return json(res, 200, banco.resumo());
+      if (rota === '/api/dono/config' && m === 'POST') return json(res, 200, banco.definirConfig(await lerCorpo(req)));
+      const d = rota.match(/^\/api\/dono\/contas\/(\d+)(\/pagamentos)?$/);
+      if (d && m === 'POST') {
         const corpo = await lerCorpo(req);
-        if (u[2] === 'senha') banco.definirSenha(id, corpo.senha, s.chave);
-        else {
-          if (id === eu.id && !corpo.ativo) throw new Error('Você não pode desativar a própria conta.');
-          banco.definirAtivo(id, Boolean(corpo.ativo));
-        }
-        // Senha redefinida ou conta desativada: derruba as sessões abertas dessa conta.
-        if (u[2] === 'senha' || !corpo.ativo) for (const [t, x] of sessoes) if (x.usuario.id === id && t !== s.token) encerrarSessao(t);
+        return json(res, 200, d[2] ? banco.registrarPagamento(Number(d[1]), corpo.valor_centavos) : banco.alterarConta(Number(d[1]), corpo));
+      }
+      return json(res, 404, { erro: 'Rota não encontrada.' });
+    }
+    // Daqui em diante é uso do sistema, que o dono não faz (ele não tem conta nem chave de dados).
+    if (eu.perfil === 'dono') return json(res, 403, { erro: 'O responsável pelo sistema não emite certidões.' });
+
+    // ---------- Conta do escritório ----------
+    if (rota === '/api/conta' && m === 'GET') {
+      const conta = banco.conta(eu.conta_id);
+      const base = { nome: conta.nome, situacao: conta.situacao, vence_em: conta.vence_em, limite_certidoes_mes: conta.limite_certidoes_mes, certidoes_no_mes: conta.certidoes_no_mes };
+      if (eu.perfil !== 'admin') return json(res, 200, base);
+      return json(res, 200, { ...base, valor_mensal_centavos: conta.valor_mensal_centavos, limite_usuarios: conta.limite_usuarios, usuarios_ativos: conta.usuarios_ativos,
+        convites_pendentes: banco.convitesPendentes(conta.id), usuarios: banco.usuariosDaConta(conta.id), pagamentos: banco.pagamentos(conta.id) });
+    }
+    if (rota.startsWith('/api/conta/')) {
+      if (eu.perfil !== 'admin') return json(res, 403, { erro: 'Apenas o administrador da conta faz isso.' });
+      if (rota === '/api/conta/convites' && m === 'POST') return json(res, 201, banco.criarConvite(eu.conta_id, s.chave));
+      const u = rota.match(/^\/api\/conta\/usuarios\/(\d+)\/(senha|ativo)$/);
+      if (u && m === 'POST') {
+        const alvo = banco.usuario(Number(u[1]));
+        if (!alvo || alvo.conta_id !== eu.conta_id) return json(res, 404, { erro: 'Usuário não encontrado.' });
+        const corpo = await lerCorpo(req);
+        if (u[2] === 'senha') banco.definirSenha(alvo.id, corpo.senha, s.chave);
+        else banco.definirAtivo(alvo.id, Boolean(corpo.ativo));
+        // Senha redefinida ou conta desativada: derruba as sessões abertas desse usuário.
+        if (u[2] === 'senha' || !corpo.ativo) for (const [t, x] of sessoes) if (x.usuario.id === alvo.id && t !== s.token) encerrarSessao(t);
         return json(res, 200, {});
       }
       return json(res, 404, { erro: 'Rota não encontrada.' });
@@ -137,6 +164,8 @@ function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {
         if (!c.pessoas.includes(pessoa.tipo)) throw new Error(`${c.orgao}: certidão indisponível para ${pessoa.tipo === 'PF' ? 'pessoa física' : 'pessoa jurídica'}.`);
         return c;
       });
+      const naFila = pedidos.lista.filter((p) => p.conta === eu.conta_id && (p.status === 'fila' || p.status === 'executando')).length;
+      banco.conferirEmissao(eu.conta_id, itens.length + naFila);
       return json(res, 201, pedidos.criar(eu, Buffer.from(s.chave), pessoa, itens).map(visaoPedido));
     }
     r = rota.match(/^\/api\/pedidos\/([\w-]+)(?:\/(cancelar|capturar))?$/);

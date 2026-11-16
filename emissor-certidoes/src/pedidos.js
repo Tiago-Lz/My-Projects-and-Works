@@ -26,6 +26,7 @@ class Pedidos {
         id: crypto.randomUUID(),
         seq: base + i, // ordem de execução: a da seleção
         dono: dono.id,
+        conta: dono.conta_id,
         criadoEm: new Date().toISOString(),
         certidao: { id: c.id, orgao: c.orgao, nome: c.nome, url: c.url, rotulo: c.rotulo, seletores: c.seletores, opcoes: c.opcoes, enviar: c.enviar },
         rotuloPessoa: `${primeiroNome} ${pessoa.tipo === 'PF' ? 'CPF' : 'CNPJ'}`,
@@ -67,6 +68,7 @@ class Pedidos {
         if (r.arquivo && this.lista.includes(p)) {
           const base = p.certidao.rotulo || semAcento(p.certidao.orgao).toUpperCase();
           p.arquivoId = this.banco.guardarArquivo({
+            contaId: p.conta,
             usuarioId: p.dono,
             orgao: p.certidao.orgao,
             certidao: p.certidao.nome,

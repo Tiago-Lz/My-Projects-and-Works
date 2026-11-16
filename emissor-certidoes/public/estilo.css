@@ -80,3 +80,17 @@ summary.grupo-titulo { list-style: none; justify-content: flex-start; }
 .linha-usuario { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--linha); }
 .linha-usuario .texto { flex: 1; min-width: 200px; }
 #usuarios { margin: 8px 0 16px; }
+.item small.alerta { color: var(--aviso); }
+.modos { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--linha); }
+.indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.indicador { border: 1px solid var(--linha); border-radius: 8px; padding: 12px; }
+.indicador strong { display: block; font: 600 22px/1.2 Georgia, serif; }
+.indicador span { font-size: 13px; color: var(--apoio); }
+details.conta { border: 1px solid var(--linha); border-radius: 8px; padding: 12px 14px; margin: 0 0 10px; }
+details.conta > summary { display: flex; justify-content: space-between; gap: 12px; color: var(--tinta); }
+details.conta p { margin: 4px 0; font-size: 13px; }
+details.conta form { margin: 12px 0; align-items: end; }
+.faixa-aviso { background: var(--realce); border: 1px solid var(--erro); color: var(--erro); border-radius: 8px; padding: 10px 14px; margin: 0 0 20px; font-weight: 600; }
+#conta-resumo p, #pagamentos p { margin: 4px 0; font-size: 14px; }
+.convite { margin: 12px 0; }
+.convite code { display: inline-block; font: 600 18px/1.4 ui-monospace, Consolas, monospace; letter-spacing: .05em; padding: 8px 12px; border: 1px dashed var(--marca); border-radius: 6px; user-select: all; }

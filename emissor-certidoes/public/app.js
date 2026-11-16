@@ -20,32 +20,60 @@
     return el;
   }
 
-  const PUBLICAS = ['/api/entrar', '/api/configurar', '/api/senha'];
+  const PUBLICAS = ['/api/entrar', '/api/configurar', '/api/contas', '/api/convites/usar', '/api/senha'];
   async function api(metodo, rota, corpo) {
     const r = await fetch(rota, {
       method: metodo,
       headers: { 'X-Sessao': sessao, ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
       body: corpo ? JSON.stringify(corpo) : undefined,
     });
-    if (r.status === 401 && !PUBLICAS.includes(rota)) { mostrarLogin(true); throw new Error('Sessão encerrada. Faça login novamente.'); }
+    if (r.status === 401 && !PUBLICAS.includes(rota)) { mostrarLogin(); throw new Error('Sessão encerrada. Faça login novamente.'); }
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || 'Falha na operação.');
     return r;
   }
 
-  // ---------- Login ----------
-  function mostrarLogin(configurado) {
+  const reais = (centavos) => (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const dia = (iso) => new Date(iso).toLocaleDateString('pt-BR');
+  const PERFIS = { dono: 'responsável pelo sistema', admin: 'administrador', usuario: 'usuário' };
+
+  // ---------- Entrada: login, novo escritório ou chave de convite ----------
+  const MODOS = {
+    entrar: { titulo: 'Entrar', texto: '', rota: '/api/entrar', botao: 'Entrar', campos: [] },
+    escritorio: { titulo: 'Cadastrar escritório', texto: 'Cria a conta do escritório e o seu acesso de administrador. Depois você convida os demais usuários.', rota: '/api/contas', botao: 'Criar conta', campos: ['escritorio', 'nome', 'senha2'] },
+    convite: { titulo: 'Entrar com chave de convite', texto: 'Use a chave gerada pelo administrador do seu escritório.', rota: '/api/convites/usar', botao: 'Criar meu acesso', campos: ['chave', 'nome', 'senha2'] },
+    configurar: { titulo: 'Primeiro acesso', texto: 'Crie a conta do responsável pelo sistema. Ela gerencia escritórios, valores e mensalidades.', rota: '/api/configurar', botao: 'Criar conta', campos: ['nome', 'senha2'] },
+  };
+  let modo = 'entrar';
+  let configurado = true;
+
+  function definirModo(novo) {
+    modo = novo;
+    const m = MODOS[modo];
+    $('#login-titulo').textContent = m.titulo;
+    $('#login-texto').textContent = m.texto;
+    $('#login-botao').textContent = m.botao;
+    document.querySelectorAll('#form-login [data-campo]').forEach((el) => {
+      const ativo = m.campos.includes(el.dataset.campo);
+      el.hidden = !ativo;
+      el.querySelector('input').required = ativo;
+    });
+    $('#login-modos').hidden = !configurado;
+    document.querySelectorAll('#login-modos button').forEach((b) => { b.hidden = b.dataset.modo === modo; });
+    $('#login-erro').textContent = '';
+  }
+  document.querySelectorAll('#login-modos button').forEach((b) => b.addEventListener('click', () => definirModo(b.dataset.modo)));
+
+  function mostrarLogin() {
     clearInterval(relogio);
     sessao = '';
     eu = null;
     sessionStorage.removeItem('sessao');
     $('#tela-app').hidden = true;
+    $('#tela-dono').hidden = true;
     $('#barra-usuario').hidden = true;
     $('#tela-login').hidden = false;
-    $('#login-titulo').textContent = configurado ? 'Entrar' : 'Primeiro acesso';
-    $('#login-texto').textContent = configurado ? '' : 'Crie a conta do administrador. Ela poderá cadastrar os demais usuários.';
-    document.querySelectorAll('.so-primeiro').forEach((el) => { el.hidden = configurado; el.querySelector('input').required = !configurado; });
-    $('#form-login').dataset.modo = configurado ? 'entrar' : 'configurar';
     $('#form-login').reset();
+    definirModo(configurado ? 'entrar' : 'configurar');
     $('#login-usuario').focus();
   }
 
@@ -54,61 +82,132 @@
     const erro = $('#login-erro');
     erro.textContent = '';
     const f = Object.fromEntries(new FormData(e.target).entries());
-    const novo = e.target.dataset.modo === 'configurar';
-    if (novo && f.senha !== f.senha2) { erro.textContent = 'As senhas não conferem.'; return; }
+    if (MODOS[modo].campos.includes('senha2') && f.senha !== f.senha2) { erro.textContent = 'As senhas não conferem.'; return; }
     try {
-      const r = await (await api('POST', novo ? '/api/configurar' : '/api/entrar', f)).json();
+      const r = await (await api('POST', MODOS[modo].rota, f)).json();
       sessao = r.sessao;
       sessionStorage.setItem('sessao', sessao);
+      configurado = true;
       e.target.reset();
-      await abrirApp(r.usuario);
+      await abrir(r.usuario);
     } catch (ex) { erro.textContent = ex.message; }
   });
 
   $('#btn-sair').addEventListener('click', async () => {
     await api('POST', '/api/sair').catch(() => {});
-    mostrarLogin(true);
+    mostrarLogin();
   });
 
-  $('#form-senha').addEventListener('submit', async (e) => {
+  document.querySelectorAll('.form-senha').forEach((form) => form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const msg = $('#senha-msg');
+    const msg = form.querySelector('.senha-msg');
     msg.textContent = '';
-    const f = Object.fromEntries(new FormData(e.target).entries());
+    const f = Object.fromEntries(new FormData(form).entries());
     if (f.nova !== f.nova2) { msg.textContent = 'As senhas não conferem.'; return; }
     try {
       await api('POST', '/api/senha', { atual: f.atual, nova: f.nova });
-      e.target.reset();
+      form.reset();
       msg.textContent = 'Senha alterada.';
+    } catch (ex) { msg.textContent = ex.message; }
+  }));
+
+  // ---------- Conta do escritório (administrador e usuários) ----------
+  async function carregarConta() {
+    if (!eu || eu.perfil === 'dono') return;
+    const c = await (await api('GET', '/api/conta')).json();
+    const aviso = c.situacao === 'em dia' ? '' : c.situacao === 'vencida' ? 'Mensalidade vencida: a emissão está bloqueada até a regularização.' : 'Conta suspensa: a emissão está bloqueada.';
+    $('#aviso-conta').textContent = aviso;
+    $('#aviso-conta').hidden = !aviso;
+    const linhas = [
+      `${c.nome} · situação: ${c.situacao} · ${c.situacao === 'em dia' ? 'válida até' : 'venceu em'} ${dia(c.vence_em)}`,
+      `Certidões neste mês: ${c.certidoes_no_mes} de ${c.limite_certidoes_mes}`,
+    ];
+    const admin = eu.perfil === 'admin';
+    if (admin) linhas.push(`Mensalidade: ${reais(c.valor_mensal_centavos)} · usuários: ${c.usuarios_ativos} de ${c.limite_usuarios}${c.convites_pendentes ? ` · ${c.convites_pendentes} convite(s) aguardando uso` : ''}`);
+    $('#conta-resumo').replaceChildren(...linhas.map((t) => h('p', {}, t)));
+    $('#painel-equipe').hidden = !admin;
+    if (!admin) return;
+    $('#usuarios').replaceChildren(...c.usuarios.map((u) => h('div', { class: 'linha-usuario' },
+      h('span', { class: 'texto' }, h('strong', {}, u.nome), ` · ${u.usuario} · ${PERFIS[u.perfil]}${u.ativo ? '' : ' · desativado'}`),
+      u.perfil === 'usuario' && acao('Redefinir senha', async () => {
+        const senha = prompt(`Nova senha para ${u.usuario} (mínimo 8 caracteres):`);
+        if (senha) await api('POST', `/api/conta/usuarios/${u.id}/senha`, { senha });
+      }),
+      u.perfil === 'usuario' && acao(u.ativo ? 'Desativar' : 'Reativar', () => api('POST', `/api/conta/usuarios/${u.id}/ativo`, { ativo: !u.ativo }), 'discreto' + (u.ativo ? ' perigo' : '')))));
+    $('#pagamentos').replaceChildren(...(c.pagamentos.length
+      ? c.pagamentos.map((p) => h('p', {}, `${dia(p.registrado_em)} · ${reais(p.valor_centavos)}`))
+      : [h('p', { class: 'apoio' }, 'Nenhum pagamento registrado ainda.')]));
+  }
+
+  $('#btn-convite').addEventListener('click', async () => {
+    const caixa = $('#convite-gerado');
+    try {
+      const r = await (await api('POST', '/api/conta/convites')).json();
+      caixa.replaceChildren(h('p', {}, 'Chave de convite (uso único, válida até ' + dia(r.expiraEm) + '). Ela não será exibida de novo:'), h('code', {}, r.chave));
+      await carregarConta();
+    } catch (ex) { caixa.replaceChildren(h('p', { class: 'erro' }, ex.message)); }
+  });
+
+  // ---------- Painel do dono do sistema ----------
+  const numero = (v) => Number(String(v).replace(',', '.'));
+  async function carregarDono() {
+    const r = await (await api('GET', '/api/dono/resumo')).json();
+    const t = r.totais;
+    $('#dono-totais').replaceChildren(...[
+      ['Escritórios', t.contas], ['Em dia', t.em_dia], ['Vencidos', t.vencidas], ['Suspensos', t.suspensas], ['Usuários ativos', t.usuarios],
+      ['Certidões no mês', t.certidoes_no_mes], ['Receita mensal prevista', reais(t.receita_mensal_prevista_centavos)], ['Recebido no mês', reais(t.recebido_no_mes_centavos)],
+    ].map(([rotulo, valor]) => h('div', { class: 'indicador' }, h('strong', {}, String(valor)), h('span', {}, rotulo))));
+
+    const f = $('#form-config');
+    if (document.activeElement?.form !== f) {
+      f.valor.value = (r.config.valor_mensal_centavos / 100).toFixed(2);
+      f.usuarios.value = r.config.limite_usuarios;
+      f.certidoes.value = r.config.limite_certidoes_mes;
+      f.teste.value = r.config.dias_teste;
+    }
+
+    $('#dono-contas').replaceChildren(...(r.contas.length ? r.contas.map((c) => {
+      const campo = (rotulo, nome, valor, tipo = 'number') => h('label', {}, rotulo, h('input', { name: nome, type: tipo, value: valor, min: 0, step: nome === 'valor' ? '0.01' : '1', required: true }));
+      const form = h('form', { class: 'grade', onsubmit: async (e) => {
+        e.preventDefault();
+        const d = e.target;
+        try {
+          await api('POST', `/api/dono/contas/${c.id}`, { valor_mensal_centavos: Math.round(numero(d.valor.value) * 100), limite_usuarios: Number(d.usuarios.value), limite_certidoes_mes: Number(d.certidoes.value), vence_em: d.vence.value + 'T23:59:59' });
+          await carregarDono();
+        } catch (ex) { alert(ex.message); }
+      } },
+        campo('Mensalidade (R$)', 'valor', (c.valor_mensal_centavos / 100).toFixed(2)),
+        campo('Limite de usuários', 'usuarios', c.limite_usuarios),
+        campo('Certidões por mês', 'certidoes', c.limite_certidoes_mes),
+        campo('Vencimento', 'vence', c.vence_em.slice(0, 10), 'date'),
+        h('button', { type: 'submit', class: 'secundario' }, 'Salvar alterações'));
+      return h('details', { class: 'conta', open: abertasDono.has(c.id), ontoggle: (e) => { e.target.open ? abertasDono.add(c.id) : abertasDono.delete(c.id); } },
+        h('summary', {}, c.nome, h('span', { class: 'selo ' + ({ 'em dia': 'concluido', vencida: 'erro', suspensa: 'cancelado' })[c.situacao] }, c.situacao)),
+        h('p', { class: 'apoio' }, `${reais(c.valor_mensal_centavos)}/mês · ${c.usuarios_ativos} de ${c.limite_usuarios} usuários · ${c.certidoes_no_mes} de ${c.limite_certidoes_mes} certidões neste mês · ${c.vencida ? 'venceu em' : 'vence em'} ${dia(c.vence_em)} · cliente desde ${dia(c.criado_em)}`),
+        form,
+        h('div', { class: 'acoes' },
+          acao(`Registrar pagamento de ${reais(c.valor_mensal_centavos)}`, () => api('POST', `/api/dono/contas/${c.id}/pagamentos`, {})),
+          acao(c.status === 'suspensa' ? 'Reativar conta' : 'Suspender conta', () => api('POST', `/api/dono/contas/${c.id}`, { status: c.status === 'suspensa' ? 'ativa' : 'suspensa' }), 'discreto' + (c.status === 'suspensa' ? '' : ' perigo'))),
+        h('h3', {}, 'Usuários'),
+        ...c.usuarios.map((u) => h('p', {}, `${u.nome} · ${u.usuario} · ${PERFIS[u.perfil]}${u.ativo ? '' : ' · desativado'} · desde ${dia(u.criado_em)}`)),
+        h('h3', {}, 'Pagamentos'),
+        ...(c.pagamentos.length ? c.pagamentos.map((p) => h('p', {}, `${dia(p.registrado_em)} · ${reais(p.valor_centavos)}`)) : [h('p', { class: 'apoio' }, 'Nenhum pagamento registrado.')]));
+    }) : [h('p', { class: 'vazio' }, 'Nenhum escritório cadastrado ainda.')]));
+  }
+  const abertasDono = new Set();
+
+  $('#form-config').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const d = e.target;
+    const msg = $('#config-msg');
+    try {
+      await api('POST', '/api/dono/config', { valor_mensal_centavos: Math.round(numero(d.valor.value) * 100), limite_usuarios: Number(d.usuarios.value), limite_certidoes_mes: Number(d.certidoes.value), dias_teste: Number(d.teste.value) });
+      msg.textContent = 'Padrões salvos. Valem para os próximos escritórios cadastrados.';
     } catch (ex) { msg.textContent = ex.message; }
   });
 
-  // ---------- Usuários (administrador) ----------
-  async function carregarUsuarios() {
-    if (eu.perfil !== 'admin') return;
-    const lista = await (await api('GET', '/api/usuarios')).json();
-    $('#usuarios').replaceChildren(...lista.map((u) => h('div', { class: 'linha-usuario' },
-      h('span', { class: 'texto' }, h('strong', {}, u.nome), ` · ${u.usuario} · ${u.perfil === 'admin' ? 'administrador' : 'operador'}${u.ativo ? '' : ' · desativado'}`),
-      acao('Redefinir senha', async () => {
-        const senha = prompt(`Nova senha para ${u.usuario} (mínimo 8 caracteres):`);
-        if (senha) await api('POST', `/api/usuarios/${u.id}/senha`, { senha });
-      }),
-      u.id !== eu.id && acao(u.ativo ? 'Desativar' : 'Reativar', () => api('POST', `/api/usuarios/${u.id}/ativo`, { ativo: !u.ativo }), 'discreto' + (u.ativo ? ' perigo' : '')))));
-  }
-
-  $('#form-usuario').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const erro = $('#usuario-erro');
-    erro.textContent = '';
-    try {
-      await api('POST', '/api/usuarios', Object.fromEntries(new FormData(e.target).entries()));
-      e.target.reset();
-      await carregarUsuarios();
-    } catch (ex) { erro.textContent = ex.message; }
-  });
-
   // ---------- Catálogo ----------
-  const ESFERAS = { federal: 'Justiça Federal', estadual: 'Justiça Estadual', trabalho: 'Justiça do Trabalho', superior: 'Tribunais superiores', mp: 'Ministério Público', policia: 'Polícia', fiscal: 'Fazenda e dívida ativa', registro: 'Junta comercial' };
+  const ESFERAS = { federal: 'Justiça Federal', estadual: 'Justiça Estadual', trabalho: 'Justiça do Trabalho', superior: 'Tribunais superiores', mp: 'Ministério Público', policia: 'Polícia', fiscal: 'Fazenda e dívida ativa', controle: 'Órgãos de controle', registro: 'Juntas comerciais e protestos' };
   const tipoAtual = () => document.querySelector('input[name=tipo]:checked').value;
 
   const ESTADOS = { AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais', PA: 'Pará', PB: 'Paraíba', PR: 'Paraná', PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins' };
@@ -127,7 +226,8 @@
     } });
     return h('label', { class: 'item' }, caixinha,
       h('span', { class: 'texto' }, h('strong', {}, c.orgao), ' — ' + c.nome,
-        h('small', {}, (c.ufs ? `Abrange ${c.ufs.join(', ')} · ` : '') + c.url)),
+        h('small', {}, (c.ufs ? `Abrange ${c.ufs.join(', ')} · ` : '') + c.url),
+        c.conferir && h('small', { class: 'alerta' }, 'Abre o site do órgão: navegue até o formulário da certidão e o sistema preenche e envia.')),
       c.personalizado && h('button', { type: 'button', class: 'discreto perigo', onclick: async (e) => { e.preventDefault(); await api('DELETE', '/api/catalogo/' + c.id); await carregarCatalogo(); } }, 'Remover'));
   }
 
@@ -209,6 +309,7 @@
       marcados.clear();
       desenharCatalogo();
       await atualizar();
+      await carregarConta();
       $('#pedidos').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (ex) { erro.textContent = ex.message; }
   });
@@ -241,7 +342,7 @@
   function acao(texto, fn, classe = 'discreto') {
     return h('button', { type: 'button', class: classe, onclick: async (e) => {
       e.target.disabled = true;
-      try { await fn(); ultimo = ''; await atualizar(); await carregarUsuarios(); } catch (ex) { alert(ex.message); } finally { e.target.disabled = false; }
+      try { await fn(); if (eu.perfil === 'dono') await carregarDono(); else { ultimo = ''; await atualizar(); await carregarConta(); } } catch (ex) { alert(ex.message); } finally { e.target.disabled = false; }
     } }, texto);
   }
 
@@ -282,25 +383,29 @@
     $('#arquivos').replaceChildren(...(arquivos.length ? arquivos.map(cartaoArquivo) : [h('p', { class: 'vazio' }, 'Nenhuma certidão guardada.')]));
   }
 
-  async function abrirApp(usuario) {
+  async function abrir(usuario) {
     eu = usuario;
+    clearInterval(relogio);
     $('#tela-login').hidden = true;
-    $('#tela-app').hidden = false;
     $('#barra-usuario').hidden = false;
-    $('#quem').textContent = `${eu.nome} (${eu.perfil === 'admin' ? 'administrador' : 'operador'})`;
-    $('#painel-usuarios').hidden = eu.perfil !== 'admin';
+    $('#quem').textContent = `${eu.nome} (${PERFIS[eu.perfil]})`;
+    const dono = eu.perfil === 'dono';
+    $('#tela-dono').hidden = !dono;
+    $('#tela-app').hidden = dono;
+    if (dono) return carregarDono();
     ultimo = '';
     await carregarCatalogo();
     ajustarTipo();
-    await carregarUsuarios();
+    await carregarConta();
     await atualizar();
-    clearInterval(relogio);
-    relogio = setInterval(() => atualizar().catch(() => {}), 2000);
+    let voltas = 0;
+    relogio = setInterval(() => { atualizar().catch(() => {}); if (++voltas % 15 === 0) carregarConta().catch(() => {}); }, 2000);
   }
 
   (async () => {
     const estado = await (await fetch('/api/estado', { headers: { 'X-Sessao': sessao } })).json();
+    configurado = estado.configurado;
     document.querySelectorAll('.dias').forEach((el) => { el.textContent = estado.diasRetencao; });
-    if (estado.usuario) await abrirApp(estado.usuario); else mostrarLogin(estado.configurado);
+    if (estado.usuario) await abrir(estado.usuario); else mostrarLogin();
   })();
 })();
