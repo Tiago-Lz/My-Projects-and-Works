@@ -257,15 +257,34 @@ function carregarPlaywright() {
 let canalQueFunciona;
 async function abrirNavegador(headless) {
   const { chromium } = carregarPlaywright();
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
   const forcado = process.env.CERTIDOES_NAVEGADOR;
   const canais = canalQueFunciona !== undefined ? [canalQueFunciona] : forcado ? [forcado] : ['msedge', 'chrome', null];
   let ultimoErro;
   for (const canal of canais) {
+    // Perfil temporário, apagado ao fim do pedido: nada do pesquisado fica no navegador.
+    // A preferência abaixo faz todo PDF ser BAIXADO em vez de aberto no visualizador
+    // interno; assim a certidão chega pelo evento de download, venha da aba que vier,
+    // sem precisar repetir o pedido ao portal.
+    const perfil = fs.mkdtempSync(path.join(os.tmpdir(), 'emissor-perfil-'));
     try {
-      const n = await chromium.launch({ headless, ...(canal ? { channel: canal } : {}) });
+      fs.mkdirSync(path.join(perfil, 'Default'), { recursive: true });
+      fs.writeFileSync(path.join(perfil, 'Default', 'Preferences'), JSON.stringify({
+        plugins: { always_open_pdf_externally: true },
+        download: { prompt_for_download: false },
+      }));
+      const contexto = await chromium.launchPersistentContext(perfil, {
+        headless, acceptDownloads: true, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', viewport: null,
+        ...(canal ? { channel: canal } : {}),
+      });
       canalQueFunciona = canal;
-      return n;
-    } catch (e) { ultimoErro = e; }
+      return { contexto, limpar: () => fs.rmSync(perfil, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) };
+    } catch (e) {
+      ultimoErro = e;
+      fs.rmSync(perfil, { recursive: true, force: true });
+    }
   }
   throw new Error('nenhum navegador encontrado (instale o Microsoft Edge ou o Google Chrome). ' + String(ultimoErro.message).split('\n')[0]);
 }
@@ -312,8 +331,8 @@ class Execucao {
     let laco;
     try {
       navegador = await abrirNavegador(this.opcoes.headless);
-      navegador.on('disconnected', () => this._finalizar({ status: 'erro', mensagem: 'O navegador foi fechado antes da expedição da certidão.' }));
-      const contexto = await navegador.newContext({ acceptDownloads: true, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' });
+      const contexto = navegador.contexto;
+      contexto.on('close', () => this._finalizar({ status: 'erro', mensagem: 'O navegador foi fechado antes da expedição da certidão.' }));
       this.contexto = contexto;
       // "Imprimir" não abre a caixa de impressão: vira o sinal de que a página é a certidão.
       await contexto.addInitScript(() => { window.print = () => { window.__certImprimiu = true; }; });
@@ -345,7 +364,7 @@ class Execucao {
         // O navegador não devolveu o corpo (comum com PDF aberto em outra aba). Dá tempo para o
         // download ou a varredura das abas resolverem; só então refaz a requisição. Um POST é
         // refeito por último, porque repete o pedido no portal.
-        await new Promise((ok) => setTimeout(ok, r.request().method() === 'GET' ? 1500 : 4000));
+        await new Promise((ok) => setTimeout(ok, r.request().method() === 'GET' ? 2500 : 10000));
         if (!this._concluir) return;
         try { entregarPdf(await (await contexto.request.fetch(r.request())).body(), r.url()); } catch { /* segue para a varredura das abas */ }
       });
@@ -382,7 +401,8 @@ class Execucao {
         }
       };
 
-      const pagina = await contexto.newPage();
+      contexto.pages().forEach(observar);
+      const pagina = contexto.pages()[0] || await contexto.newPage();
       this.aoAtualizar('Abrindo o portal oficial…');
       await pagina.goto(this.certidao.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
@@ -459,7 +479,10 @@ class Execucao {
       this._concluir = null;
       await comPrazo(Promise.resolve(laco), 5000).catch(() => {});
       this.contexto = null;
-      if (navegador) await comPrazo(navegador.close(), 10000).catch(() => {});
+      if (navegador) {
+        await comPrazo(navegador.contexto.close(), 10000).catch(() => {});
+        try { navegador.limpar(); } catch { /* perfil temporário ainda em uso: o sistema operacional limpa */ }
+      }
     }
   }
 }

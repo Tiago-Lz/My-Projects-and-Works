@@ -42,6 +42,7 @@ test('envia sozinho e reconhece o PDF aberto em outra aba', { timeout: 90000 }, 
   assert.equal(r.status, 'concluido', r.mensagem);
   assert.equal(r.arquivo.origem, 'portal-oficial');
   assert.deepEqual([posts[0].n, posts[0].c], ['Maria da Silva', '529.982.247-25']);
+  assert.equal(posts.length, 1, 'o pedido não pode ser repetido no portal');
 });
 
 test('espera o reCAPTCHA ser resolvido antes de enviar', { timeout: 90000 }, async () => {
