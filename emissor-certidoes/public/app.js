@@ -73,37 +73,74 @@
   const ESFERAS = { federal: 'Justiça Federal', estadual: 'Justiça Estadual', trabalho: 'Justiça do Trabalho', superior: 'Tribunais superiores', mp: 'Ministério Público', policia: 'Polícia', fiscal: 'Fazenda e dívida ativa', registro: 'Junta comercial' };
   const tipoAtual = () => document.querySelector('input[name=tipo]:checked').value;
 
+  const ESTADOS = { AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais', PA: 'Pará', PB: 'Paraíba', PR: 'Paraná', PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins' };
+  const semAcento = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // Estados a que um portal se aplica; vazio = âmbito nacional. Um TRF vale para
+  // todos os estados da sua região e aparece em cada um deles.
+  const ufsDe = (c) => (c.uf ? [c.uf] : c.ufs || []);
+  const abertos = new Set();
+
+  function linhaCertidao(c) {
+    const caixinha = h('input', { type: 'checkbox', 'data-id': c.id, checked: marcados.has(c.id), onchange: (e) => {
+      e.target.checked ? marcados.add(c.id) : marcados.delete(c.id);
+      // A mesma certidão pode estar listada em mais de um estado.
+      document.querySelectorAll(`#catalogo input[data-id="${c.id}"]`).forEach((x) => { x.checked = e.target.checked; });
+      contar();
+    } });
+    return h('label', { class: 'item' }, caixinha,
+      h('span', { class: 'texto' }, h('strong', {}, c.orgao), ' — ' + c.nome,
+        h('small', {}, (c.ufs ? `Abrange ${c.ufs.join(', ')} · ` : '') + c.url)),
+      c.personalizado && h('button', { type: 'button', class: 'discreto perigo', onclick: async (e) => { e.preventDefault(); await api('DELETE', '/api/catalogo/' + c.id); await carregarCatalogo(); } }, 'Remover'));
+  }
+
   function desenharCatalogo() {
     const tipo = tipoAtual();
     const nat = $('#filtro-natureza').value;
     const uf = $('#filtro-uf').value;
-    const visiveis = catalogo.filter((c) => c.pessoas.includes(tipo) && (!nat || c.natureza.includes(nat)) && (!uf || c.uf === uf));
+    const termos = semAcento($('#filtro-texto').value).split(/\s+/).filter(Boolean);
+    const visiveis = catalogo.filter((c) => {
+      if (!c.pessoas.includes(tipo) || (nat && !c.natureza.includes(nat))) return false;
+      const texto = semAcento([c.orgao, c.nome, c.rotulo, ...ufsDe(c), ...ufsDe(c).map((u) => ESTADOS[u])].join(' '));
+      return termos.every((t) => texto.includes(t));
+    });
     // Uma certidão que deixou de valer para o tipo de pessoa não pode seguir marcada.
     for (const id of [...marcados]) if (!catalogo.some((c) => c.id === id && c.pessoas.includes(tipo))) marcados.delete(id);
+
+    const grupos = [['', 'Âmbito nacional', visiveis.filter((c) => !ufsDe(c).length)]];
+    for (const sigla of Object.keys(ESTADOS).sort((x, y) => ESTADOS[x].localeCompare(ESTADOS[y], 'pt-BR'))) {
+      grupos.push([sigla, `${ESTADOS[sigla]} (${sigla})`, visiveis.filter((c) => ufsDe(c).includes(sigla))]);
+    }
     const caixa = $('#catalogo');
     caixa.replaceChildren();
-    for (const [esfera, titulo] of Object.entries(ESFERAS)) {
-      const itens = visiveis.filter((c) => c.esfera === esfera);
-      if (!itens.length) continue;
-      caixa.append(h('div', { class: 'grupo-titulo' }, titulo));
+    for (const [sigla, titulo, itens] of grupos) {
+      if (!itens.length || (uf && sigla && sigla !== uf)) continue;
+      // Dentro do estado: na ordem das esferas.
+      itens.sort((x, y) => Object.keys(ESFERAS).indexOf(x.esfera) - Object.keys(ESFERAS).indexOf(y.esfera));
+      const aberto = Boolean(termos.length) || (uf ? sigla === uf : abertos.has(sigla));
+      const selecionadas = itens.filter((c) => marcados.has(c.id)).length;
+      const bloco = h('details', { class: 'grupo', open: aberto, ontoggle: (e) => { if (termos.length || uf) return; e.target.open ? abertos.add(sigla) : abertos.delete(sigla); } },
+        h('summary', { class: 'grupo-titulo' }, titulo, h('span', { class: 'qtd' }, `${itens.length} ${itens.length === 1 ? 'certidão' : 'certidões'}`)),
+        h('div', { class: 'grupo-acoes' },
+          h('button', { type: 'button', class: 'discreto', onclick: () => { itens.forEach((c) => marcados.add(c.id)); abertos.add(sigla); desenharCatalogo(); } }, 'Marcar todas'),
+          selecionadas > 0 && h('button', { type: 'button', class: 'discreto', onclick: () => { itens.forEach((c) => marcados.delete(c.id)); abertos.add(sigla); desenharCatalogo(); } }, 'Desmarcar')));
+      let esfera = null;
       for (const c of itens) {
-        const caixinha = h('input', { type: 'checkbox', checked: marcados.has(c.id), onchange: (e) => { e.target.checked ? marcados.add(c.id) : marcados.delete(c.id); contar(); } });
-        caixa.append(h('label', { class: 'item' }, caixinha,
-          h('span', { class: 'texto' }, h('strong', {}, c.orgao + (c.uf && !c.orgao.includes(c.uf) ? ` (${c.uf})` : '')), ' — ' + c.nome, h('small', {}, c.url)),
-          c.personalizado && h('button', { type: 'button', class: 'discreto perigo', onclick: async (e) => { e.preventDefault(); await api('DELETE', '/api/catalogo/' + c.id); await carregarCatalogo(); } }, 'Remover')));
+        if (c.esfera !== esfera) { esfera = c.esfera; bloco.append(h('div', { class: 'subgrupo' }, ESFERAS[esfera] || esfera)); }
+        bloco.append(linhaCertidao(c));
       }
+      caixa.append(bloco);
     }
-    if (!caixa.children.length) caixa.append(h('p', { class: 'vazio' }, 'Nenhum portal para este filtro. Cadastre o portal abaixo.'));
+    if (!caixa.children.length) caixa.append(h('p', { class: 'vazio' }, 'Nenhuma certidão para esta busca. Cadastre o portal abaixo.'));
     contar();
   }
   const contar = () => { $('#contagem').textContent = marcados.size ? `${marcados.size} selecionada(s)` : ''; };
 
   async function carregarCatalogo() {
     catalogo = await (await api('GET', '/api/catalogo')).json();
-    const ufs = [...new Set(catalogo.map((c) => c.uf).filter(Boolean))].sort();
+    const ufs = [...new Set(catalogo.flatMap(ufsDe))].sort();
     const sel = $('#filtro-uf');
     const atual = sel.value;
-    sel.replaceChildren(h('option', { value: '' }, 'Todas'), ...ufs.map((u) => h('option', { value: u }, u)));
+    sel.replaceChildren(h('option', { value: '' }, 'Todas'), ...ufs.map((u) => h('option', { value: u }, `${u} — ${ESTADOS[u] || u}`)));
     sel.value = ufs.includes(atual) ? atual : '';
     desenharCatalogo();
   }
@@ -118,6 +155,7 @@
   document.querySelectorAll('input[name=tipo]').forEach((r) => r.addEventListener('change', ajustarTipo));
   $('#filtro-natureza').addEventListener('change', desenharCatalogo);
   $('#filtro-uf').addEventListener('change', desenharCatalogo);
+  $('#filtro-texto').addEventListener('input', desenharCatalogo);
 
   $('#form-pedido').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -158,7 +196,6 @@
     if (abrir) window.open(url, '_blank', 'noopener');
     else {
       // Padrão de nome: "TRF3 CIVIL ADALTO CPF.pdf"
-      const semAcento = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const primeiro = semAcento(p.pessoa.nome).split(' ')[0].toUpperCase();
       const nome = `${p.certidao.rotulo || semAcento(p.certidao.orgao).toUpperCase()} ${primeiro} ${p.pessoa.tipo === 'PF' ? 'CPF' : 'CNPJ'}.${p.arquivo.ext}`.replace(/[^\w.\- ]+/g, '');
       h('a', { href: url, download: nome }).click();
