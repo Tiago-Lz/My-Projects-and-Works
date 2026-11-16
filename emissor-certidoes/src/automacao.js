@@ -335,7 +335,29 @@ class Execucao {
       contexto.on('close', () => this._finalizar({ status: 'erro', mensagem: 'O navegador foi fechado antes da expedição da certidão.' }));
       this.contexto = contexto;
       // "Imprimir" não abre a caixa de impressão: vira o sinal de que a página é a certidão.
-      await contexto.addInitScript(() => { window.print = () => { window.__certImprimiu = true; }; });
+      await contexto.addInitScript(() => {
+        window.print = () => { window.__certImprimiu = true; };
+        // A primeira resposta de uma aba recém-aberta não pode ser vigiada pelo navegador.
+        // Por isso o que abriria em outra aba (formulário, link ou window.open) passa a abrir
+        // na mesma, onde a certidão é lida assim que chega. blob: e data: seguem como estão.
+        const naMesma = (el, attr) => { if (el && el.getAttribute(attr) && !/^_(self|top|parent)$/i.test(el.getAttribute(attr))) el.setAttribute(attr, '_self'); };
+        addEventListener('submit', (e) => naMesma(e.target, 'target'), true);
+        addEventListener('click', (e) => {
+          const alvo = e.target && e.target.closest ? e.target : null;
+          if (!alvo) return;
+          naMesma(alvo.closest('a[target], area[target]'), 'target');
+          naMesma(alvo.closest('[formtarget]'), 'formtarget');
+          const botao = alvo.closest('button, input[type=submit], input[type=image]');
+          if (botao && botao.form) naMesma(botao.form, 'target');
+        }, true);
+        const enviar = HTMLFormElement.prototype.submit;
+        HTMLFormElement.prototype.submit = function () { naMesma(this, 'target'); return enviar.call(this); };
+        const abrir = window.open;
+        window.open = function (url, ...resto) {
+          if (url && !/^(blob:|data:|about:|javascript:)/i.test(String(url))) { location.href = url; return window; }
+          return abrir.call(window, url, ...resto);
+        };
+      });
 
       const ehPdf = (b) => b && b.subarray(0, 5).toString('latin1') === '%PDF-';
       const entregarPdf = (conteudo, urlOrigem) => {
