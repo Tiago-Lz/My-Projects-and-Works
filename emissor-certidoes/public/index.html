@@ -10,22 +10,31 @@
   <header class="topo">
     <div>
       <h1>Emissor de Certidões</h1>
-      <p>Pedidos nos portais oficiais · dados cifrados nesta máquina</p>
+      <p>Pedidos nos portais oficiais · dados do pesquisado não são armazenados</p>
     </div>
-    <button id="btn-bloquear" class="secundario" hidden>Bloquear cofre</button>
+    <div id="barra-usuario" class="barra-usuario" hidden>
+      <span id="quem" class="apoio"></span>
+      <button id="btn-sair" class="secundario">Sair</button>
+    </div>
   </header>
 
-  <main id="tela-cofre" class="cartao estreito" hidden>
-    <h2 id="cofre-titulo">Desbloquear cofre</h2>
-    <p id="cofre-texto" class="apoio"></p>
-    <form id="form-cofre">
-      <label>Senha mestra
-        <input id="senha" type="password" autocomplete="current-password" minlength="8" required>
+  <main id="tela-login" class="cartao estreito" hidden>
+    <h2 id="login-titulo">Entrar</h2>
+    <p id="login-texto" class="apoio"></p>
+    <form id="form-login">
+      <label class="so-primeiro" hidden>Seu nome
+        <input name="nome" maxlength="120" autocomplete="name">
       </label>
-      <label id="rotulo-confirma" hidden>Confirme a senha
-        <input id="senha2" type="password" autocomplete="new-password" minlength="8">
+      <label>Usuário
+        <input id="login-usuario" name="usuario" required maxlength="32" autocomplete="username" autocapitalize="none">
       </label>
-      <p id="cofre-erro" class="erro" role="alert"></p>
+      <label>Senha
+        <input name="senha" type="password" required minlength="8" autocomplete="current-password">
+      </label>
+      <label class="so-primeiro" hidden>Confirme a senha
+        <input name="senha2" type="password" minlength="8" autocomplete="new-password">
+      </label>
+      <p id="login-erro" class="erro" role="alert"></p>
       <button type="submit">Entrar</button>
     </form>
   </main>
@@ -123,8 +132,43 @@
     </section>
 
     <section class="cartao">
-      <h2>Pedidos</h2>
+      <h2>Pedidos em andamento</h2>
+      <p class="apoio">Os dados informados existem só durante a emissão e somem ao sair ou fechar o sistema.</p>
       <div id="pedidos"></div>
+    </section>
+
+    <section class="cartao">
+      <h2>Certidões guardadas</h2>
+      <p class="apoio">Cada certidão é apagada automaticamente <span class="dias">7</span> dias após a emissão. Baixe as que precisar manter.</p>
+      <div id="arquivos"></div>
+    </section>
+
+    <section class="cartao">
+      <h2>Conta</h2>
+      <details>
+        <summary>Alterar minha senha</summary>
+        <form id="form-senha" class="grade">
+          <label>Senha atual <input name="atual" type="password" required autocomplete="current-password"></label>
+          <label>Nova senha <input name="nova" type="password" required minlength="8" autocomplete="new-password"></label>
+          <label>Confirme a nova senha <input name="nova2" type="password" required minlength="8" autocomplete="new-password"></label>
+          <p id="senha-msg" class="erro largo" role="status"></p>
+          <button type="submit" class="secundario">Alterar senha</button>
+        </form>
+      </details>
+      <details id="painel-usuarios" hidden>
+        <summary>Usuários do sistema</summary>
+        <div id="usuarios"></div>
+        <form id="form-usuario" class="grade">
+          <label>Nome <input name="nome" required maxlength="120" autocomplete="off"></label>
+          <label>Usuário <input name="usuario" required maxlength="32" autocomplete="off" autocapitalize="none"></label>
+          <label>Senha inicial <input name="senha" type="password" required minlength="8" autocomplete="new-password"></label>
+          <label>Perfil
+            <select name="perfil"><option value="operador">Operador</option><option value="admin">Administrador</option></select>
+          </label>
+          <p id="usuario-erro" class="erro largo" role="alert"></p>
+          <button type="submit" class="secundario">Cadastrar usuário</button>
+        </form>
+      </details>
     </section>
   </main>
 

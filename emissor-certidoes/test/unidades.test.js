@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { cpfValido, cnpjValido, normalizarPessoa } = require('../src/validacao');
-const { Cofre } = require('../src/cofre');
+const { Banco } = require('../src/banco');
 const { formatar } = require('../src/automacao');
 
 test('valida CPF e CNPJ pelos dígitos verificadores', () => {
@@ -35,22 +35,44 @@ test('formata valores conforme o campo do portal', () => {
   assert.equal(formatar('dataNascimento', '1990-02-28', { tipo: 'date', maxLength: -1 }), '1990-02-28');
 });
 
-test('cofre cifra em disco e rejeita senha errada ou adulteração', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cofre-'));
-  const c = new Cofre(dir);
-  assert.throws(() => c.criar('curta'), /8 caracteres/);
-  c.criar('senha-mestra-1');
-  c.gravar('x.enc', Buffer.from('CPF 529.982.247-25'));
-  assert.ok(!fs.readFileSync(path.join(dir, 'x.enc')).includes('529'));
-  c.fechar();
-  assert.throws(() => c.ler('x.enc'), /bloqueado/);
-  assert.equal(new Cofre(dir).abrir('senha-errada-1'), false);
-  const c2 = new Cofre(dir);
-  assert.equal(c2.abrir('senha-mestra-1'), true);
-  assert.equal(c2.ler('x.enc').toString(), 'CPF 529.982.247-25');
-  const bruto = fs.readFileSync(path.join(dir, 'x.enc'));
-  bruto[bruto.length - 1] ^= 1;
-  fs.writeFileSync(path.join(dir, 'x.enc'), bruto);
-  assert.throws(() => c2.ler('x.enc'));
+test('banco: login, chave de dados por usuário e retenção de 7 dias', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'banco-'));
+  const b = new Banco(dir);
+  assert.throws(() => b.criarPrimeiroAdmin({ usuario: 'ana', nome: 'Ana', senha: 'curta' }), /8 caracteres/);
+  const admin = b.criarPrimeiroAdmin({ usuario: 'Ana', nome: 'Ana Souza', senha: 'senha-da-ana-1' });
+  assert.equal(admin.usuario.perfil, 'admin');
+  assert.throws(() => b.criarPrimeiroAdmin({ usuario: 'outro', nome: 'Outro', senha: 'senha-outro-1' }), /já foi configurado/);
+  assert.equal(b.autenticar('ana', 'senha-errada-1'), null);
+  assert.equal(b.autenticar('ninguem', 'senha-da-ana-1'), null);
+
+  // Operador criado pelo admin recebe a mesma chave de dados, sob a própria senha.
+  const op = b.criarUsuario({ usuario: 'bia', nome: 'Bia Lima', senha: 'senha-da-bia-1' }, admin.chave);
+  assert.equal(op.perfil, 'operador');
+  assert.throws(() => b.criarUsuario({ usuario: 'bia', nome: 'Outra', senha: 'senha-da-bia-2' }, admin.chave), /Já existe/);
+  const bia = b.autenticar('bia', 'senha-da-bia-1');
+  assert.deepEqual(bia.chave, admin.chave);
+
+  const id = b.guardarArquivo({ usuarioId: bia.usuario.id, orgao: 'TJ', certidao: 'Cível', nomeArquivo: 'TJ MARIA CPF.pdf', mime: 'application/pdf', origem: 'portal-oficial', conteudo: Buffer.from('%PDF-segredo') }, bia.chave);
+  assert.ok(!fs.readFileSync(path.join(dir, 'arquivos', id + '.enc')).includes('segredo'));
+  assert.equal(b.lerArquivo(id, admin.chave).toString(), '%PDF-segredo');
+  assert.equal(b.arquivos(admin.usuario).length, 1); // admin vê os de todos
+  const [a] = b.arquivos(bia.usuario);
+  assert.equal(Math.round((new Date(a.expira_em) - new Date(a.criado_em)) / 86400000), 7);
+
+  // Troca de senha mantém o acesso; a antiga deixa de valer.
+  b.definirSenha(bia.usuario.id, 'senha-nova-bia-2', bia.chave);
+  assert.equal(b.autenticar('bia', 'senha-da-bia-1'), null);
+  assert.deepEqual(b.autenticar('bia', 'senha-nova-bia-2').chave, admin.chave);
+
+  assert.throws(() => b.definirAtivo(admin.usuario.id, false), /único administrador/);
+  b.definirAtivo(bia.usuario.id, false);
+  assert.equal(b.autenticar('bia', 'senha-nova-bia-2'), null);
+
+  // Passado o prazo, some do banco e do disco.
+  assert.equal(b.limparVencidos(new Date(Date.now() + 6.9 * 86400000)), 0);
+  assert.equal(b.limparVencidos(new Date(Date.now() + 7.1 * 86400000)), 1);
+  assert.equal(b.arquivos(admin.usuario).length, 0);
+  assert.equal(fs.readdirSync(path.join(dir, 'arquivos')).length, 0);
+  b.fechar();
   fs.rmSync(dir, { recursive: true });
 });

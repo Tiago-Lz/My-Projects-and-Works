@@ -1,52 +1,53 @@
 'use strict';
-// Registro dos pedidos (cifrado em disco) e fila de execução: um portal por vez.
+// Fila de pedidos, mantida SOMENTE em memória. Os dados do pesquisado existem
+// do envio do formulário até o fim da emissão e são descartados em seguida;
+// nada deles vai para o disco. O que fica guardado (por 7 dias) é a certidão.
 
 const crypto = require('node:crypto');
 const { Execucao } = require('./automacao');
 
-const ARQ = 'pedidos.enc';
+const semAcento = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 class Pedidos {
-  constructor(cofre, opcoesAutomacao = {}) {
-    this.cofre = cofre;
+  constructor(banco, opcoesAutomacao = {}) {
+    this.banco = banco;
     this.opcoes = opcoesAutomacao;
     this.lista = [];
+    this.segredos = new Map(); // id -> { pessoa, chave }: nunca sai deste módulo
     this.execucao = null; // { id, exec }
     this.rodando = false;
   }
 
-  carregar() {
-    this.lista = this.cofre.existe(ARQ) ? JSON.parse(this.cofre.ler(ARQ).toString('utf8')) : [];
-    // Pedidos interrompidos por um encerramento anterior não ficam presos em "executando".
-    for (const p of this.lista) {
-      if (p.status === 'fila' || p.status === 'executando') {
-        p.status = 'erro';
-        p.mensagem = 'Interrompido: o sistema foi encerrado antes da conclusão.';
-      }
-    }
-  }
-
-  salvar() { this.cofre.gravar(ARQ, Buffer.from(JSON.stringify(this.lista))); }
-
-  obter(id) { return this.lista.find((p) => p.id === id); }
-
-  criar(pessoa, certidoes) {
+  criar(dono, chave, pessoa, certidoes) {
     const base = Date.now() * 1000;
-    const novos = certidoes.map((c, i) => ({
-      id: crypto.randomUUID(),
-      seq: base + i, // ordem de execução: a da seleção
-      criadoEm: new Date().toISOString(),
-      concluidoEm: null,
-      pessoa,
-      certidao: { id: c.id, orgao: c.orgao, nome: c.nome, url: c.url, rotulo: c.rotulo, seletores: c.seletores, opcoes: c.opcoes, enviar: c.enviar },
-      status: 'fila',
-      mensagem: 'Aguardando na fila.',
-      arquivo: null,
-    }));
+    const primeiroNome = semAcento(pessoa.nome).split(' ')[0].toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const novos = certidoes.map((c, i) => {
+      const p = {
+        id: crypto.randomUUID(),
+        seq: base + i, // ordem de execução: a da seleção
+        dono: dono.id,
+        criadoEm: new Date().toISOString(),
+        certidao: { id: c.id, orgao: c.orgao, nome: c.nome, url: c.url, rotulo: c.rotulo, seletores: c.seletores, opcoes: c.opcoes, enviar: c.enviar },
+        rotuloPessoa: `${primeiroNome} ${pessoa.tipo === 'PF' ? 'CPF' : 'CNPJ'}`,
+        status: 'fila',
+        mensagem: 'Aguardando na fila.',
+        arquivoId: null,
+      };
+      this.segredos.set(p.id, { pessoa, chave });
+      return p;
+    });
     this.lista.unshift(...novos);
-    this.salvar();
     this._processar();
     return novos;
+  }
+
+  doDono(donoId) { return this.lista.filter((p) => p.dono === donoId); }
+  obter(id, donoId) { return this.lista.find((p) => p.id === id && p.dono === donoId); }
+
+  _encerrar(p, status, mensagem) {
+    this.segredos.delete(p.id); // descarta os dados do pesquisado
+    p.status = status;
+    p.mensagem = mensagem;
   }
 
   async _processar() {
@@ -55,76 +56,53 @@ class Pedidos {
     try {
       for (;;) {
         const p = this.lista.filter((x) => x.status === 'fila').sort((a, b) => a.seq - b.seq)[0];
-        if (!p || !this.cofre.aberto) break;
+        if (!p) break;
+        const { pessoa, chave } = this.segredos.get(p.id);
         p.status = 'executando';
         p.mensagem = 'Iniciando o navegador…';
-        const exec = new Execucao({
-          certidao: p.certidao, pessoa: p.pessoa, opcoes: this.opcoes,
-          aoAtualizar: (m) => { p.mensagem = m; },
-        });
+        const exec = new Execucao({ certidao: p.certidao, pessoa, opcoes: this.opcoes, aoAtualizar: (m) => { p.mensagem = m; } });
         this.execucao = { id: p.id, exec };
         const r = await exec.executar();
         this.execucao = null;
-        if (!this.cofre.aberto) break; // cofre bloqueado durante a execução: nada é gravado
-        if (!this.obter(p.id)) continue; // excluído durante a execução
-        p.status = r.status;
-        p.mensagem = r.mensagem;
-        p.concluidoEm = new Date().toISOString();
-        if (r.arquivo) {
-          const nome = `arquivos/${p.id}.enc`;
-          this.cofre.gravar(nome, r.arquivo.conteudo);
-          p.arquivo = {
-            caminho: nome,
+        if (r.arquivo && this.lista.includes(p)) {
+          const base = p.certidao.rotulo || semAcento(p.certidao.orgao).toUpperCase();
+          p.arquivoId = this.banco.guardarArquivo({
+            usuarioId: p.dono,
+            orgao: p.certidao.orgao,
+            certidao: p.certidao.nome,
+            nomeArquivo: `${base} ${p.rotuloPessoa}.${r.arquivo.ext}`.replace(/[^\w.\- ]+/g, ''),
             mime: r.arquivo.mime,
-            ext: r.arquivo.ext,
             origem: r.arquivo.origem,
-            urlOrigem: r.arquivo.urlOrigem,
-            tamanho: r.arquivo.conteudo.length,
-            sha256: crypto.createHash('sha256').update(r.arquivo.conteudo).digest('hex'),
-          };
+            conteudo: r.arquivo.conteudo,
+          }, chave);
         }
-        this.salvar();
+        this._encerrar(p, r.status, r.mensagem);
       }
     } finally {
       this.rodando = false;
     }
   }
 
-  cancelar(id) {
-    const p = this.obter(id);
-    if (!p) return false;
-    if (this.execucao?.id === id) this.execucao.exec.cancelar();
-    else if (p.status === 'fila') {
-      p.status = 'cancelado';
-      p.mensagem = 'Cancelado pelo operador.';
-      this.salvar();
-    }
-    return true;
+  cancelar(p) {
+    if (this.execucao?.id === p.id) this.execucao.exec.cancelar();
+    else if (p.status === 'fila') this._encerrar(p, 'cancelado', 'Cancelado pelo operador.');
   }
 
-  async capturar(id) {
-    if (this.execucao?.id !== id) throw new Error('Este pedido não está em execução.');
+  async capturar(p) {
+    if (this.execucao?.id !== p.id) throw new Error('Este pedido não está em execução.');
     await this.execucao.exec.capturarPagina();
   }
 
-  excluir(id) {
-    const p = this.obter(id);
-    if (!p) return false;
-    if (this.execucao?.id === id) this.execucao.exec.cancelar();
-    if (p.arquivo) this.cofre.apagar(p.arquivo.caminho);
-    this.lista = this.lista.filter((x) => x.id !== id);
-    this.salvar();
-    return true;
+  remover(p) {
+    this.cancelar(p);
+    this.segredos.delete(p.id);
+    this.lista = this.lista.filter((x) => x !== p);
   }
 
-  lerArquivo(id) {
-    const p = this.obter(id);
-    if (!p?.arquivo) return null;
-    return { pedido: p, conteudo: this.cofre.ler(p.arquivo.caminho) };
+  /** Ao sair: interrompe e esquece tudo que pertence ao usuário (ou a todos). */
+  esquecer(donoId) {
+    for (const p of [...this.lista]) if (donoId === undefined || p.dono === donoId) this.remover(p);
   }
-
-  /** Encerra a execução em curso (usado ao bloquear o cofre ou desligar). */
-  interromper() { if (this.execucao) this.execucao.exec.cancelar(); }
 }
 
 module.exports = { Pedidos };

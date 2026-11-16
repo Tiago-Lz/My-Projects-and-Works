@@ -130,6 +130,34 @@ async function preencherFrame(frame, valores, seletores, opcoes) {
   return preenchidos;
 }
 
+// O Playwright fica fora do executável (pasta node_modules ao lado dele).
+function carregarPlaywright() {
+  const { createRequire } = require('node:module');
+  const path = require('node:path');
+  let empacotado = false;
+  try { empacotado = require('node:sea').isSea(); } catch { /* Node sem suporte a SEA */ }
+  const base = empacotado ? path.join(path.dirname(process.execPath), 'app.js') : __filename;
+  return createRequire(base)('playwright-core');
+}
+
+// Usa o navegador já instalado na máquina (Edge vem com o Windows; depois Chrome)
+// e só então o Chromium do Playwright, se houver. CERTIDOES_NAVEGADOR força um canal.
+let canalQueFunciona;
+async function abrirNavegador(headless) {
+  const { chromium } = carregarPlaywright();
+  const forcado = process.env.CERTIDOES_NAVEGADOR;
+  const canais = canalQueFunciona !== undefined ? [canalQueFunciona] : forcado ? [forcado] : ['msedge', 'chrome', null];
+  let ultimoErro;
+  for (const canal of canais) {
+    try {
+      const n = await chromium.launch({ headless, ...(canal ? { channel: canal } : {}) });
+      canalQueFunciona = canal;
+      return n;
+    } catch (e) { ultimoErro = e; }
+  }
+  throw new Error('nenhum navegador encontrado (instale o Microsoft Edge ou o Google Chrome). ' + String(ultimoErro.message).split('\n')[0]);
+}
+
 class Execucao {
   constructor({ certidao, pessoa, opcoes, aoAtualizar }) {
     this.certidao = certidao;
@@ -158,14 +186,13 @@ class Execucao {
   }
 
   async executar() {
-    const { chromium } = require('playwright');
     const valores = valoresPara(this.pessoa);
     let navegador;
     const resultado = new Promise((resolve) => { this._concluir = resolve; });
     const relogio = setTimeout(() => this._finalizar({ status: 'erro', mensagem: 'Tempo limite esgotado sem que a certidão fosse expedida.' }), this.opcoes.tempoLimiteMs);
     let laco;
     try {
-      navegador = await chromium.launch({ headless: this.opcoes.headless });
+      navegador = await abrirNavegador(this.opcoes.headless);
       navegador.on('disconnected', () => this._finalizar({ status: 'erro', mensagem: 'O navegador foi fechado antes da expedição da certidão.' }));
       const contexto = await navegador.newContext({ acceptDownloads: true, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' });
 

@@ -4,12 +4,17 @@
   "description": "Sistema local para solicitar certidões cíveis, criminais e fiscais nos portais oficiais e arquivar os documentos expedidos.",
   "private": true,
   "type": "commonjs",
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22.13" },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "postject": "^1.0.0-alpha.6"
   },
   "dependencies": {
-    "playwright": "^1.48.0"
+    "playwright-core": "^1.48.0"
   }
 }

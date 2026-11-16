@@ -76,3 +76,7 @@ summary.grupo-titulo { list-style: none; justify-content: flex-start; }
 .grupo-acoes { display: flex; gap: 8px; padding: 8px 12px 0; }
 .subgrupo { padding: 10px 12px 2px; font-size: 12px; font-weight: 600; color: var(--apoio); }
 .filtros .busca { flex: 1; min-width: 200px; }
+.barra-usuario { display: flex; align-items: center; gap: 12px; }
+.linha-usuario { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--linha); }
+.linha-usuario .texto { flex: 1; min-width: 200px; }
+#usuarios { margin: 8px 0 16px; }

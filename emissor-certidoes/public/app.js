@@ -2,8 +2,9 @@
 (() => {
   const $ = (s) => document.querySelector(s);
   let sessao = sessionStorage.getItem('sessao') || '';
+  let eu = null;
   let catalogo = [];
-  let ultimaLista = '';
+  let ultimo = '';
   const marcados = new Set();
   let relogio = null;
 
@@ -19,54 +20,91 @@
     return el;
   }
 
+  const PUBLICAS = ['/api/entrar', '/api/configurar', '/api/senha'];
   async function api(metodo, rota, corpo) {
     const r = await fetch(rota, {
       method: metodo,
       headers: { 'X-Sessao': sessao, ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
       body: corpo ? JSON.stringify(corpo) : undefined,
     });
-    if (r.status === 401 && rota !== '/api/desbloquear') { mostrarCofre(true); throw new Error('Cofre bloqueado.'); }
+    if (r.status === 401 && !PUBLICAS.includes(rota)) { mostrarLogin(true); throw new Error('Sessão encerrada. Faça login novamente.'); }
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || 'Falha na operação.');
     return r;
   }
 
-  // ---------- Cofre ----------
-  function mostrarCofre(configurado) {
+  // ---------- Login ----------
+  function mostrarLogin(configurado) {
     clearInterval(relogio);
     sessao = '';
+    eu = null;
     sessionStorage.removeItem('sessao');
     $('#tela-app').hidden = true;
-    $('#btn-bloquear').hidden = true;
-    $('#tela-cofre').hidden = false;
-    $('#cofre-titulo').textContent = configurado ? 'Desbloquear cofre' : 'Criar senha mestra';
-    $('#cofre-texto').textContent = configurado
-      ? 'Os pedidos e as certidões estão cifrados. Informe a senha mestra para abri-los.'
-      : 'Esta senha cifra todos os dados pessoais e certidões gravados nesta máquina. Não há como recuperá-la: se for perdida, os dados ficam inacessíveis.';
-    $('#rotulo-confirma').hidden = configurado;
-    $('#senha2').required = !configurado;
-    $('#senha').value = $('#senha2').value = '';
-    $('#senha').focus();
+    $('#barra-usuario').hidden = true;
+    $('#tela-login').hidden = false;
+    $('#login-titulo').textContent = configurado ? 'Entrar' : 'Primeiro acesso';
+    $('#login-texto').textContent = configurado ? '' : 'Crie a conta do administrador. Ela poderá cadastrar os demais usuários.';
+    document.querySelectorAll('.so-primeiro').forEach((el) => { el.hidden = configurado; el.querySelector('input').required = !configurado; });
+    $('#form-login').dataset.modo = configurado ? 'entrar' : 'configurar';
+    $('#form-login').reset();
+    $('#login-usuario').focus();
   }
 
-  $('#form-cofre').addEventListener('submit', async (e) => {
+  $('#form-login').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const erro = $('#cofre-erro');
+    const erro = $('#login-erro');
     erro.textContent = '';
-    if (!$('#rotulo-confirma').hidden && $('#senha').value !== $('#senha2').value) {
-      erro.textContent = 'As senhas não conferem.';
-      return;
-    }
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    const novo = e.target.dataset.modo === 'configurar';
+    if (novo && f.senha !== f.senha2) { erro.textContent = 'As senhas não conferem.'; return; }
     try {
-      const r = await api('POST', '/api/desbloquear', { senha: $('#senha').value });
-      sessao = (await r.json()).sessao;
+      const r = await (await api('POST', novo ? '/api/configurar' : '/api/entrar', f)).json();
+      sessao = r.sessao;
       sessionStorage.setItem('sessao', sessao);
-      await abrirApp();
+      e.target.reset();
+      await abrirApp(r.usuario);
     } catch (ex) { erro.textContent = ex.message; }
   });
 
-  $('#btn-bloquear').addEventListener('click', async () => {
-    await api('POST', '/api/bloquear').catch(() => {});
-    mostrarCofre(true);
+  $('#btn-sair').addEventListener('click', async () => {
+    await api('POST', '/api/sair').catch(() => {});
+    mostrarLogin(true);
+  });
+
+  $('#form-senha').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = $('#senha-msg');
+    msg.textContent = '';
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    if (f.nova !== f.nova2) { msg.textContent = 'As senhas não conferem.'; return; }
+    try {
+      await api('POST', '/api/senha', { atual: f.atual, nova: f.nova });
+      e.target.reset();
+      msg.textContent = 'Senha alterada.';
+    } catch (ex) { msg.textContent = ex.message; }
+  });
+
+  // ---------- Usuários (administrador) ----------
+  async function carregarUsuarios() {
+    if (eu.perfil !== 'admin') return;
+    const lista = await (await api('GET', '/api/usuarios')).json();
+    $('#usuarios').replaceChildren(...lista.map((u) => h('div', { class: 'linha-usuario' },
+      h('span', { class: 'texto' }, h('strong', {}, u.nome), ` · ${u.usuario} · ${u.perfil === 'admin' ? 'administrador' : 'operador'}${u.ativo ? '' : ' · desativado'}`),
+      acao('Redefinir senha', async () => {
+        const senha = prompt(`Nova senha para ${u.usuario} (mínimo 8 caracteres):`);
+        if (senha) await api('POST', `/api/usuarios/${u.id}/senha`, { senha });
+      }),
+      u.id !== eu.id && acao(u.ativo ? 'Desativar' : 'Reativar', () => api('POST', `/api/usuarios/${u.id}/ativo`, { ativo: !u.ativo }), 'discreto' + (u.ativo ? ' perigo' : '')))));
+  }
+
+  $('#form-usuario').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const erro = $('#usuario-erro');
+    erro.textContent = '';
+    try {
+      await api('POST', '/api/usuarios', Object.fromEntries(new FormData(e.target).entries()));
+      e.target.reset();
+      await carregarUsuarios();
+    } catch (ex) { erro.textContent = ex.message; }
   });
 
   // ---------- Catálogo ----------
@@ -140,7 +178,7 @@
     const ufs = [...new Set(catalogo.flatMap(ufsDe))].sort();
     const sel = $('#filtro-uf');
     const atual = sel.value;
-    sel.replaceChildren(h('option', { value: '' }, 'Todas'), ...ufs.map((u) => h('option', { value: u }, `${u} — ${ESTADOS[u] || u}`)));
+    sel.replaceChildren(h('option', { value: '' }, 'Todos'), ...ufs.map((u) => h('option', { value: u }, `${u} — ${ESTADOS[u] || u}`)));
     sel.value = ufs.includes(atual) ? atual : '';
     desenharCatalogo();
   }
@@ -165,9 +203,12 @@
     const pessoa = Object.fromEntries(f.entries());
     try {
       await api('POST', '/api/pedidos', { pessoa, certidoes: [...marcados] });
+      const tipo = tipoAtual();
+      e.target.reset(); // os dados do pesquisado não ficam na tela
+      document.querySelector(`input[name=tipo][value=${tipo}]`).checked = true;
       marcados.clear();
       desenharCatalogo();
-      await atualizarPedidos();
+      await atualizar();
       $('#pedidos').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (ex) { erro.textContent = ex.message; }
   });
@@ -185,68 +226,81 @@
     } catch (ex) { erro.textContent = ex.message; }
   });
 
-  // ---------- Pedidos ----------
+  // ---------- Pedidos e certidões guardadas ----------
   const ROTULOS = { fila: 'Na fila', executando: 'Em andamento', concluido: 'Concluído', erro: 'Não concluído', cancelado: 'Cancelado' };
-  const mascara = (d) => d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
   const quando = (iso) => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
-  async function baixar(p, abrir) {
-    const blob = await (await api('GET', `/api/pedidos/${p.id}/arquivo`)).blob();
+  async function baixar(a, abrir) {
+    const blob = await (await api('GET', `/api/arquivos/${a.id}`)).blob();
     const url = URL.createObjectURL(blob);
     if (abrir) window.open(url, '_blank', 'noopener');
-    else {
-      // Padrão de nome: "TRF3 CIVIL ADALTO CPF.pdf"
-      const primeiro = semAcento(p.pessoa.nome).split(' ')[0].toUpperCase();
-      const nome = `${p.certidao.rotulo || semAcento(p.certidao.orgao).toUpperCase()} ${primeiro} ${p.pessoa.tipo === 'PF' ? 'CPF' : 'CNPJ'}.${p.arquivo.ext}`.replace(/[^\w.\- ]+/g, '');
-      h('a', { href: url, download: nome }).click();
-    }
+    else h('a', { href: url, download: a.nomeArquivo }).click();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
-  const acao = (texto, fn, classe = 'discreto') => h('button', { type: 'button', class: classe, onclick: async (e) => {
-    e.target.disabled = true;
-    try { await fn(); await atualizarPedidos(); } catch (ex) { alert(ex.message); } finally { e.target.disabled = false; }
-  } }, texto);
+  function acao(texto, fn, classe = 'discreto') {
+    return h('button', { type: 'button', class: classe, onclick: async (e) => {
+      e.target.disabled = true;
+      try { await fn(); ultimo = ''; await atualizar(); await carregarUsuarios(); } catch (ex) { alert(ex.message); } finally { e.target.disabled = false; }
+    } }, texto);
+  }
 
   function cartaoPedido(p) {
     const botoes = [];
     if (p.status === 'executando') botoes.push(acao('Salvar a página aberta como certidão', () => api('POST', `/api/pedidos/${p.id}/capturar`)));
     if (p.status === 'executando' || p.status === 'fila') botoes.push(acao('Cancelar', () => api('POST', `/api/pedidos/${p.id}/cancelar`)));
-    if (p.arquivo) botoes.push(acao('Abrir', () => baixar(p, true)), acao('Baixar', () => baixar(p, false)));
-    if (p.status !== 'executando') botoes.push(acao('Excluir', async () => { if (confirm('Excluir este pedido e o arquivo da certidão?')) await api('DELETE', `/api/pedidos/${p.id}`); }, 'discreto perigo'));
+    else botoes.push(acao('Dispensar', () => api('DELETE', `/api/pedidos/${p.id}`)));
     return h('article', { class: 'pedido ' + p.status },
       h('div', { class: 'pedido-topo' },
-        h('div', {}, h('strong', {}, p.certidao.orgao), ' — ' + p.certidao.nome),
+        h('div', {}, h('strong', {}, p.orgao), ' — ' + p.certidao),
         h('span', { class: 'selo ' + p.status }, ROTULOS[p.status])),
-      h('p', {}, `${p.pessoa.nome} · ${p.pessoa.tipo === 'PF' ? 'CPF' : 'CNPJ'} ${mascara(p.pessoa.documento)} · pedido em ${quando(p.criadoEm)}`),
+      h('p', {}, `${p.pessoa} · pedido em ${quando(p.criadoEm)}`),
       h('p', { class: 'msg' }, p.mensagem),
-      p.arquivo && p.arquivo.origem === 'captura-de-pagina' && h('p', { class: 'alerta' }, 'Arquivo gerado por captura da página exibida, não pelo PDF do portal. Confira o conteúdo antes de usar.'),
-      p.arquivo && h('p', {}, `SHA-256 ${p.arquivo.sha256} · ${(p.arquivo.tamanho / 1024).toFixed(0)} KB`),
       h('div', { class: 'acoes' }, ...botoes));
   }
 
-  async function atualizarPedidos() {
-    const lista = await (await api('GET', '/api/pedidos')).json();
-    const assinatura = JSON.stringify(lista);
-    if (assinatura === ultimaLista) return; // evita redesenhar (e perder o foco) sem mudança
-    ultimaLista = assinatura;
-    $('#pedidos').replaceChildren(...(lista.length ? lista.map(cartaoPedido) : [h('p', { class: 'vazio' }, 'Nenhum pedido ainda.')]));
+  function cartaoArquivo(a) {
+    const dias = Math.max(0, Math.ceil((new Date(a.expiraEm) - Date.now()) / 86400000));
+    return h('article', { class: 'pedido' },
+      h('div', { class: 'pedido-topo' },
+        h('div', {}, h('strong', {}, a.nomeArquivo)),
+        h('span', { class: 'selo ' + (dias <= 1 ? 'erro' : 'fila') }, dias <= 1 ? 'Apaga em menos de 1 dia' : `Apaga em ${dias} dias`)),
+      h('p', {}, `${a.orgao} — ${a.certidao} · emitida em ${quando(a.criadoEm)}${eu.perfil === 'admin' ? ' · por ' + a.dono : ''}`),
+      a.origem === 'captura-de-pagina' && h('p', { class: 'alerta' }, 'Arquivo gerado por captura da página exibida, não pelo PDF do portal. Confira o conteúdo antes de usar.'),
+      h('p', {}, `SHA-256 ${a.sha256} · ${(a.tamanho / 1024).toFixed(0)} KB`),
+      h('div', { class: 'acoes' },
+        acao('Abrir', () => baixar(a, true)), acao('Baixar', () => baixar(a, false)),
+        acao('Excluir agora', async () => { if (confirm('Excluir esta certidão em definitivo?')) await api('DELETE', `/api/arquivos/${a.id}`); }, 'discreto perigo')));
   }
 
-  async function abrirApp() {
-    $('#tela-cofre').hidden = true;
+  async function atualizar() {
+    const [pedidos, arquivos] = await Promise.all([api('GET', '/api/pedidos').then((r) => r.json()), api('GET', '/api/arquivos').then((r) => r.json())]);
+    const assinatura = JSON.stringify([pedidos, arquivos]);
+    if (assinatura === ultimo) return; // evita redesenhar (e perder o foco) sem mudança
+    ultimo = assinatura;
+    $('#pedidos').replaceChildren(...(pedidos.length ? pedidos.map(cartaoPedido) : [h('p', { class: 'vazio' }, 'Nenhum pedido nesta sessão.')]));
+    $('#arquivos').replaceChildren(...(arquivos.length ? arquivos.map(cartaoArquivo) : [h('p', { class: 'vazio' }, 'Nenhuma certidão guardada.')]));
+  }
+
+  async function abrirApp(usuario) {
+    eu = usuario;
+    $('#tela-login').hidden = true;
     $('#tela-app').hidden = false;
-    $('#btn-bloquear').hidden = false;
-    ultimaLista = '';
+    $('#barra-usuario').hidden = false;
+    $('#quem').textContent = `${eu.nome} (${eu.perfil === 'admin' ? 'administrador' : 'operador'})`;
+    $('#painel-usuarios').hidden = eu.perfil !== 'admin';
+    ultimo = '';
     await carregarCatalogo();
     ajustarTipo();
-    await atualizarPedidos();
+    await carregarUsuarios();
+    await atualizar();
     clearInterval(relogio);
-    relogio = setInterval(() => atualizarPedidos().catch(() => {}), 2000);
+    relogio = setInterval(() => atualizar().catch(() => {}), 2000);
   }
 
   (async () => {
     const estado = await (await fetch('/api/estado', { headers: { 'X-Sessao': sessao } })).json();
-    if (estado.aberto) await abrirApp(); else mostrarCofre(estado.configurado);
+    document.querySelectorAll('.dias').forEach((el) => { el.textContent = estado.diasRetencao; });
+    if (estado.usuario) await abrirApp(estado.usuario); else mostrarLogin(estado.configurado);
   })();
 })();

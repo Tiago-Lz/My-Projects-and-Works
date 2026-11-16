@@ -48,44 +48,70 @@ test('solicita no portal, captura o PDF expedido e guarda cifrado', async () => 
   const base = `http://127.0.0.1:${porta}`;
   let sessao = '';
   const chamar = (m, rota, corpo) => fetch(base + rota, { method: m, headers: { 'X-Sessao': sessao, 'Content-Type': 'application/json' }, body: corpo && JSON.stringify(corpo) });
+  const esperar = async (id) => {
+    for (let i = 0; i < 150; i++) {
+      const p = (await (await chamar('GET', '/api/pedidos')).json()).find((x) => x.id === id);
+      if (p.status !== 'fila' && p.status !== 'executando') return p;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    throw new Error('pedido não terminou');
+  };
   try {
     assert.equal((await chamar('GET', '/api/pedidos')).status, 401);
     const statusComHost = (host) => new Promise((ok) => http.get({ host: '127.0.0.1', port: porta, path: '/api/estado', headers: { Host: host } }, (r) => { r.resume(); ok(r.statusCode); }));
     assert.equal(await statusComHost('malicioso.example'), 403);
     assert.equal(await statusComHost(`localhost:${porta}`), 200);
-    sessao = (await (await chamar('POST', '/api/desbloquear', { senha: 'senha-mestra-1' })).json()).sessao;
-    assert.equal((await chamar('POST', '/api/desbloquear', { senha: 'outra-senha-9' })).status, 401);
+
+    // Primeiro acesso cria o administrador; depois disso a rota se fecha.
+    sessao = (await (await chamar('POST', '/api/configurar', { usuario: 'ana', nome: 'Ana Souza', senha: 'senha-da-ana-1' })).json()).sessao;
+    assert.equal((await chamar('POST', '/api/configurar', { usuario: 'x', nome: 'X', senha: 'senha-qualquer' })).status, 400);
+    assert.equal((await chamar('POST', '/api/entrar', { usuario: 'ana', senha: 'senha-errada-1' })).status, 401);
 
     const invalido = await chamar('POST', '/api/pedidos', { pessoa: { tipo: 'PF', nome: 'Maria', documento: '1' }, certidoes: ['falso'] });
     assert.equal(invalido.status, 400);
 
-    const pessoa = { tipo: 'PF', nome: 'Maria da Silva', documento: '529.982.247-25', nomeMae: 'Ana da Silva', dataNascimento: '1990-02-28' };
+    const pessoa = { tipo: 'PF', nome: 'Maria da Silva', documento: '529.982.247-25', nomeMae: 'Ana Pereira', dataNascimento: '1990-02-28' };
     const [criado] = await (await chamar('POST', '/api/pedidos', { pessoa, certidoes: ['falso'] })).json();
-
-    let p;
-    for (let i = 0; i < 150; i++) {
-      p = (await (await chamar('GET', '/api/pedidos')).json()).find((x) => x.id === criado.id);
-      if (p.status !== 'fila' && p.status !== 'executando') break;
-      await new Promise((r) => setTimeout(r, 200));
-    }
+    const p = await esperar(criado.id);
     assert.equal(p.status, 'concluido', p.mensagem);
-    assert.equal(p.arquivo.origem, 'portal-oficial');
-    assert.equal(p.arquivo.caminho, undefined);
-    assert.deepEqual(portal.recebidos[0], { f1: 'Maria da Silva', f2: '529.982.247-25', nmMae: 'Ana da Silva', f4: '28/02/1990', f5: '', usuarioNome: '', modelo: '9', tipo: 'e' });
+    assert.equal(p.pessoa, 'MARIA CPF');
+    assert.deepEqual(portal.recebidos[0], { f1: 'Maria da Silva', f2: '529.982.247-25', nmMae: 'Ana Pereira', f4: '28/02/1990', f5: '', usuarioNome: '', modelo: '9', tipo: 'e' });
 
-    const pdf = Buffer.from(await (await chamar('GET', `/api/pedidos/${p.id}/arquivo`)).arrayBuffer());
+    // Depois da emissão os dados do pesquisado não existem mais nem em memória.
+    assert.equal(app.pedidos.segredos.size, 0);
+    assert.ok(!/Silva|Pereira|52998224725|1990/.test(JSON.stringify(app.pedidos.lista)));
+
+    const [arq] = await (await chamar('GET', '/api/arquivos')).json();
+    assert.equal(arq.id, p.arquivoId);
+    assert.equal(arq.nomeArquivo, 'TJ-TESTE MARIA CPF.pdf');
+    assert.equal(arq.origem, 'portal-oficial');
+    const pdf = Buffer.from(await (await chamar('GET', `/api/arquivos/${arq.id}`)).arrayBuffer());
     assert.ok(pdf.toString().startsWith('%PDF-'));
-    // Nada legível em disco.
-    const emDisco = fs.readdirSync(path.join(dir, 'dados'), { recursive: true })
-      .map((f) => path.join(dir, 'dados', f)).filter((f) => fs.statSync(f).isFile() && !f.endsWith('cofre.json'))
-      .map((f) => fs.readFileSync(f).toString('latin1')).join('');
-    assert.ok(!emDisco.includes('Maria') && !emDisco.includes('52998224725') && !emDisco.includes('%PDF'));
 
-    await chamar('POST', '/api/bloquear');
+    // Em disco: nenhum dado do pesquisado além do primeiro nome, e nenhum PDF legível.
+    const emDisco = fs.readdirSync(path.join(dir, 'dados'), { recursive: true })
+      .map((f) => path.join(dir, 'dados', f)).filter((f) => fs.statSync(f).isFile())
+      .map((f) => fs.readFileSync(f).toString('latin1')).join('');
+    assert.ok(!/Silva|Pereira|52998224725|529\.982|1990-02-28|28\/02\/1990|%PDF/.test(emDisco));
+
+    // Operador: não gerencia usuários, não vê certidões de outro usuário.
+    assert.equal((await chamar('POST', '/api/usuarios', { usuario: 'bia', nome: 'Bia Lima', senha: 'senha-da-bia-1' })).status, 201);
+    const admin = sessao;
+    sessao = (await (await chamar('POST', '/api/entrar', { usuario: 'bia', senha: 'senha-da-bia-1' })).json()).sessao;
+    assert.equal((await chamar('GET', '/api/usuarios')).status, 403);
+    assert.equal((await (await chamar('GET', '/api/arquivos')).json()).length, 0);
+    assert.equal((await chamar('GET', `/api/arquivos/${arq.id}`)).status, 404);
+    await chamar('POST', '/api/sair');
     assert.equal((await chamar('GET', '/api/pedidos')).status, 401);
-    sessao = (await (await chamar('POST', '/api/desbloquear', { senha: 'senha-mestra-1' })).json()).sessao;
-    assert.equal((await (await chamar('GET', '/api/pedidos')).json()).length, 1);
-    assert.equal((await chamar('DELETE', `/api/pedidos/${p.id}`)).status, 200);
+
+    // Sair descarta os pedidos da sessão; a certidão guardada continua até o prazo.
+    sessao = admin;
+    await chamar('POST', '/api/sair');
+    sessao = (await (await chamar('POST', '/api/entrar', { usuario: 'ana', senha: 'senha-da-ana-1' })).json()).sessao;
+    assert.equal((await (await chamar('GET', '/api/pedidos')).json()).length, 0);
+    assert.equal((await (await chamar('GET', '/api/arquivos')).json()).length, 1);
+    app.banco.limparVencidos(new Date(Date.now() + 8 * 86400000));
+    assert.equal((await chamar('GET', `/api/arquivos/${arq.id}`)).status, 404);
     assert.equal(fs.readdirSync(path.join(dir, 'dados', 'arquivos')).length, 0);
   } finally {
     await app.parar();

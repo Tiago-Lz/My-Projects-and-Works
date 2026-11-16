@@ -9,37 +9,62 @@ físicas e jurídicas nos **portais oficiais** dos órgãos e arquivar os docume
 
 ## Como funciona
 
-1. Você informa os dados do pesquisado (PF ou PJ) e marca as certidões desejadas.
+1. Você faz login, informa os dados do pesquisado (PF ou PJ) e marca as certidões desejadas.
 2. Para cada uma, o sistema abre o portal oficial em uma janela do navegador e
    preenche os campos que reconhece (nome, CPF/CNPJ, mãe, pai, nascimento, RG, e-mail).
 3. Você confere, resolve o CAPTCHA (o sistema **não** burla CAPTCHA) e envia.
-4. O PDF expedido é capturado automaticamente, cifrado e listado em **Pedidos**,
-   com o SHA-256 do arquivo. Se o portal mostrar a certidão em HTML, use
-   *Salvar a página aberta como certidão* (o registro fica marcado como captura).
+4. O PDF expedido é capturado automaticamente e fica em **Certidões guardadas** por
+   7 dias. Se o portal mostrar a certidão em HTML, use *Salvar a página aberta como
+   certidão* (o arquivo fica marcado como captura).
 
 Os pedidos rodam em fila, um portal por vez.
 
-## Instalação
+## Executável (Windows)
 
-Requer Node.js 20 ou mais recente.
+O executável é gerado pelo GitHub Actions a cada alteração: na aba **Actions** do
+repositório, abra a execução mais recente de *Emissor de Certidões* e baixe o artefato
+`EmissorCertidoes-windows`. Descompacte e abra `EmissorCertidoes.exe`.
+
+- A pasta inteira é o programa: mantenha `recursos` e `node_modules` ao lado do `.exe`.
+- Não precisa instalar Node. Precisa de Microsoft Edge (já vem no Windows) ou Chrome.
+- Uma janela de console fica aberta e o sistema abre no navegador; fechar a janela encerra.
+- O executável não é assinado: o Windows pode exibir o aviso do SmartScreen na primeira vez.
+- Os dados ficam em `%LOCALAPPDATA%\EmissorCertidoes`.
+
+Para gerar você mesmo, em um Windows com Node.js 22.13 ou mais recente:
 
 ```bash
 cd emissor-certidoes
 npm install
-npx playwright install chromium
-npm start            # abre em http://127.0.0.1:8787
+npm run build        # gera dist/EmissorCertidoes/
 ```
 
-Variáveis opcionais: `PORTA` (padrão 8787) e `CERTIDOES_DADOS` (pasta dos dados, padrão `./dados`).
+Para rodar sem empacotar: `npm install` e `npm start` (abre em http://127.0.0.1:8787).
 
-## Dados sensíveis
+Variáveis opcionais: `PORTA` (padrão 8787), `CERTIDOES_DADOS` (pasta dos dados) e
+`CERTIDOES_NAVEGADOR` (`msedge` ou `chrome`).
 
-- O servidor escuta apenas em `127.0.0.1` e recusa requisições de outras origens.
-- Dados pessoais e certidões ficam em `dados/`, cifrados com AES-256-GCM. A chave é
-  derivada da senha mestra (scrypt) e só existe em memória enquanto o cofre está aberto.
-- **Não há recuperação da senha mestra.** Sem ela os dados não podem ser lidos.
-- A única saída de dados é a do próprio navegador ao enviar o pedido ao portal oficial.
-- `dados/` está no `.gitignore`. Faça backup dessa pasta inteira (incluindo `cofre.json`).
+## Login e usuários
+
+O banco de dados (`emissor.db`, SQLite) guarda as contas. No primeiro acesso é criada a
+conta do administrador, que cadastra os demais usuários, redefine senhas e desativa contas.
+Operadores veem apenas as próprias certidões; administradores veem as de todos.
+As senhas são guardadas como hash scrypt com sal. A sessão expira após 30 minutos sem uso.
+
+## O que é e o que não é armazenado
+
+- **Dados do pesquisado** (nome completo, CPF/CNPJ, filiação, nascimento, RG, e-mail):
+  **não são gravados**. Existem só em memória, do envio do formulário até o fim da
+  emissão, e são descartados em seguida. Sair ou fechar o sistema descarta os pedidos pendentes.
+- **Certidões emitidas**: ficam 7 dias, cifradas em disco (AES-256-GCM), e são apagadas
+  automaticamente depois disso. Podem ser excluídas antes pela tela.
+- **Índice das certidões** no banco: órgão, tipo, data, hash e o nome do arquivo, que
+  segue o padrão `TRF3 CIVIL ADALTO CPF.pdf` e por isso contém o **primeiro nome** do pesquisado.
+- A chave que cifra as certidões é protegida pela senha de cada usuário: sem login,
+  os arquivos em disco não podem ser lidos. Se todos os usuários perderem a senha, as
+  certidões guardadas ficam inacessíveis.
+- O servidor escuta apenas em `127.0.0.1` e recusa requisições de outras origens. A única
+  saída de dados é a do navegador ao enviar o pedido ao portal oficial.
 - Emita certidões de terceiros apenas com base legal para tratar esses dados (LGPD).
 
 ## Catálogo de portais
@@ -70,4 +95,4 @@ Campos aceitos em `seletores`: `nome`, `documento`, `cpf`, `cnpj`, `nomeMae`, `n
 npm test
 ```
 
-Cobrem validação de CPF/CNPJ, o cofre e o fluxo completo contra um portal simulado.
+Cobrem validação de CPF/CNPJ, o banco (login, usuários, retenção) e o fluxo completo contra um portal simulado.
