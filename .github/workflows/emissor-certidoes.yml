@@ -11,6 +11,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: emissor-certidoes
@@ -22,6 +23,7 @@ jobs:
       - run: npm ci
       - name: Testes (usam o Edge do runner)
         run: npm test
+        timeout-minutes: 8
       - name: Gerar o executável
         run: npm run build
       - name: Conferir que o executável sobe

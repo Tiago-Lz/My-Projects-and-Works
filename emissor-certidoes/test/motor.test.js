@@ -34,7 +34,7 @@ async function rodar(rotas, extra = {}) {
   try { return { r: await exec.executar(), posts, inicio }; } finally { srv.close(); srv.closeAllConnections(); }
 }
 
-test('envia sozinho e reconhece o PDF aberto em outra aba', async () => {
+test('envia sozinho e reconhece o PDF aberto em outra aba', { timeout: 90000 }, async () => {
   const { r, posts } = await rodar({
     'GET /': ['text/html', html(`<form method="post" action="/emitir" target="_blank">${CAMPOS}<button type="button">Limpar</button><button>Emitir certidão</button></form>`)],
     'POST /emitir': ['application/pdf', PDF],
@@ -44,7 +44,7 @@ test('envia sozinho e reconhece o PDF aberto em outra aba', async () => {
   assert.deepEqual([posts[0].n, posts[0].c], ['Maria da Silva', '529.982.247-25']);
 });
 
-test('espera o reCAPTCHA ser resolvido antes de enviar', async () => {
+test('espera o reCAPTCHA ser resolvido antes de enviar', { timeout: 90000 }, async () => {
   // O "widget" se resolve sozinho após 1,2 s, como se o operador tivesse clicado.
   const { r, posts, inicio } = await rodar({
     'GET /': ['text/html', html(`<form method="post" action="/emitir">${CAMPOS}
@@ -61,7 +61,7 @@ test('espera o reCAPTCHA ser resolvido antes de enviar', async () => {
   assert.ok(posts[0].em - inicio >= 1200, 'não pode enviar antes do CAPTCHA');
 });
 
-test('CAPTCHA de imagem: envia quando o operador termina de digitar', async () => {
+test('CAPTCHA de imagem: envia quando o operador termina de digitar', { timeout: 90000 }, async () => {
   const { r, posts } = await rodar({
     'GET /': ['text/html', html(`<form method="post" action="/emitir">${CAMPOS}
       <label>Digite os caracteres da imagem <input name="cap"></label><button>Pesquisar</button></form>
@@ -72,7 +72,7 @@ test('CAPTCHA de imagem: envia quando o operador termina de digitar', async () =
   assert.equal(posts[0].cap, 'x7k2p');
 });
 
-test('PDF gerado no navegador (blob) em nova aba', async () => {
+test('PDF gerado no navegador (blob) em nova aba', { timeout: 90000 }, async () => {
   const { r } = await rodar({
     'GET /': ['text/html', html(`<form id="f">${CAMPOS}<button>Gerar</button></form>
       <script>document.getElementById('f').addEventListener('submit', (e) => { e.preventDefault();
@@ -83,7 +83,7 @@ test('PDF gerado no navegador (blob) em nova aba', async () => {
   assert.ok(r.arquivo.conteudo.toString().includes('certidao de teste'));
 });
 
-test('resultado com link "Baixar certidão" em etapa seguinte', async () => {
+test('resultado com link "Baixar certidão" em etapa seguinte', { timeout: 90000 }, async () => {
   const { r } = await rodar({
     'GET /': ['text/html', html(`<form method="post" action="/resultado">${CAMPOS}<button>Solicitar</button></form>`)],
     'POST /resultado': ['text/html', html('<p>Pedido registrado.</p><a href="/doc" target="_blank">Baixar certidão</a>')],
@@ -93,7 +93,7 @@ test('resultado com link "Baixar certidão" em etapa seguinte', async () => {
   assert.equal(r.arquivo.origem, 'portal-oficial');
 });
 
-test('certidão exibida em HTML é salva em PDF; página de erro não', async () => {
+test('certidão exibida em HTML é salva em PDF; página de erro não', { timeout: 90000 }, async () => {
   const ok = await rodar({
     'GET /': ['text/html', html(`<form method="post" action="/emitir">${CAMPOS}<button>Emitir</button></form>`)],
     'POST /emitir': ['text/html', html(`<h1>CERTIDÃO NEGATIVA</h1><p>${'Certifico que, revendo os registros de distribuição, NADA CONSTA em nome de Maria da Silva. '.repeat(4)}</p><p>Código de validação: 1234-ABCD</p>`)],

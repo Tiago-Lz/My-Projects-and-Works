@@ -36,7 +36,7 @@ function portalFalso() {
   return new Promise((r) => srv.listen(0, '127.0.0.1', () => r({ srv, recebidos, url: `http://127.0.0.1:${srv.address().port}/` })));
 }
 
-test('solicita no portal, captura o PDF expedido e guarda cifrado', async () => {
+test('solicita no portal, captura o PDF expedido e guarda cifrado', { timeout: 120000 }, async () => {
   const portal = await portalFalso();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cert-'));
   const cat = path.join(dir, 'cat.json');

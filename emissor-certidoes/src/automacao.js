@@ -205,17 +205,26 @@ function formatar(campo, valor, { tipo, maxLength }) {
   return valor;
 }
 
+// Uma aba que virou visualizador de PDF (ou travou) pode nunca responder a uma chamada.
+// Nada no laço pode esperar para sempre, senão o pedido inteiro fica preso.
+function comPrazo(promessa, ms) {
+  let relogio;
+  const limite = new Promise((_, rejeitar) => { relogio = setTimeout(() => rejeitar(new Error('sem resposta da página')), ms); });
+  return Promise.race([promessa, limite]).finally(() => clearTimeout(relogio));
+}
+const avaliar = (alvo, fn, arg) => comPrazo(alvo.evaluate(fn, arg), 4000);
+
 async function preencherFrame(frame, valores, seletores, opcoes) {
   let preenchidos = 0;
   // O modelo vem primeiro: em vários portais ele define quais campos aparecem.
-  if (opcoes && opcoes.length) preenchidos += await frame.evaluate(marcarOpcoes, opcoes);
+  if (opcoes && opcoes.length) preenchidos += await avaliar(frame, marcarOpcoes, opcoes);
   // Seletores explícitos do catálogo têm precedência sobre a heurística.
   for (const [campo, seletor] of Object.entries(seletores || {})) {
     await frame.locator(seletor).first()
       .evaluate((el, c) => { if (!el.hasAttribute('data-cert-campo')) el.setAttribute('data-cert-campo', c); }, campo)
       .catch(() => {});
   }
-  await frame.evaluate(marcarCampos, PADROES);
+  await avaliar(frame, marcarCampos, PADROES);
   const pendentes = await frame
     .locator('[data-cert-campo]:not([data-cert-campo="ignorado"]):not([data-cert-campo="captcha"]):not([data-cert-ok])')
     .elementHandles();
@@ -292,7 +301,7 @@ class Execucao {
   async capturarPagina() {
     const p = this.contexto && this._paginaVisivel(this.contexto);
     if (!p) throw new Error('Nenhuma página aberta para capturar.');
-    this._finalizar({ status: 'concluido', mensagem: 'Página capturada pelo operador.', arquivo: { ...(await this._imprimir(p)), origem: 'captura-de-pagina', urlOrigem: p.url() } });
+    this._finalizar({ status: 'concluido', mensagem: 'Página capturada pelo operador.', arquivo: { ...(await comPrazo(this._imprimir(p), 20000)), origem: 'captura-de-pagina', urlOrigem: p.url() } });
   }
 
   async executar() {
@@ -322,7 +331,7 @@ class Execucao {
         pagina.on('download', async (d) => {
           try {
             const partes = [];
-            for await (const p of await d.createReadStream()) partes.push(p);
+            await comPrazo((async () => { for await (const p of await d.createReadStream()) partes.push(p); })(), 60000);
             entregarPdf(Buffer.concat(partes), d.url());
           } catch { /* download cancelado */ }
         });
@@ -354,7 +363,7 @@ class Execucao {
             // Um blob só é legível na origem que o criou: tenta nos quadros de todas as abas.
             const quadros = [frame, ...contexto.pages().flatMap((p) => p.frames())].filter(Boolean);
             for (const q of quadros) {
-              try { if (entregarPdf(Buffer.from(await q.evaluate(buscarNaPagina, url), 'base64'), url)) return; } catch { /* outra origem */ }
+              try { if (entregarPdf(Buffer.from(await avaliar(q, buscarNaPagina, url), 'base64'), url)) return; } catch { /* outra origem */ }
             }
             return;
           }
@@ -367,7 +376,7 @@ class Execucao {
           const u = p.url();
           if (/^blob:|^data:application\/pdf/i.test(u) || /\.pdf(\?|#|$)/i.test(u)) await buscarUrl(u, null);
           for (const frame of p.frames()) {
-            const urls = await frame.evaluate(pdfsEmbutidos).catch(() => []);
+            const urls = await avaliar(frame, pdfsEmbutidos).catch(() => []);
             for (const url of urls) await buscarUrl(url, frame);
           }
         }
@@ -389,7 +398,7 @@ class Execucao {
           if (p.isClosed()) continue;
           for (const frame of p.frames()) {
             await preencherFrame(frame, valores, this.certidao.seletores, this.certidao.opcoes).catch(() => 0);
-            const est = await frame.evaluate(estadoFormulario).catch(() => null);
+            const est = await avaliar(frame, estadoFormulario).catch(() => null);
             if (!est || !est.campos) continue;
             if (est.captcha === 'pendente') { aguardandoCaptcha = true; captchaAnterior = ''; continue; }
             // CAPTCHA de imagem: só envia quando o texto parou de mudar (o operador terminou de digitar).
@@ -399,7 +408,7 @@ class Execucao {
             if (enviados.get(frame) === assinatura || cliques >= 8) continue;
             const alvo = this.certidao.enviar
               ? frame.locator(this.certidao.enviar).first()
-              : (await frame.evaluate(marcarEnviar).catch(() => false)) ? frame.locator('[data-cert-enviar]').first() : null;
+              : (await avaliar(frame, marcarEnviar).catch(() => false)) ? frame.locator('[data-cert-enviar]').first() : null;
             enviados.set(frame, assinatura);
             cliques++;
             ultimoEnvio = Date.now();
@@ -416,15 +425,15 @@ class Execucao {
 
         // Depois do envio: página que já é a certidão, ou um link para abri-la.
         const visivel = this._paginaVisivel(contexto);
-        const sinal = visivel ? await visivel.evaluate(pareceCertidao).catch(() => '') : '';
+        const sinal = visivel ? await avaliar(visivel, pareceCertidao).catch(() => '') : '';
         if (sinal === 'impressao' || (sinal === 'texto' && ++certidaoVista >= 2)) {
-          const arquivo = await this._imprimir(visivel);
+          const arquivo = await comPrazo(this._imprimir(visivel), 20000);
           return this._finalizar({ status: 'concluido', mensagem: 'Certidão exibida pelo portal e salva em PDF.', arquivo: { ...arquivo, origem: 'captura-de-pagina', urlOrigem: visivel.url() } });
         }
         if (sinal !== 'texto') certidaoVista = 0;
         for (const p of contexto.pages()) {
           for (const frame of p.isClosed() ? [] : p.frames()) {
-            if (await frame.evaluate(marcarBaixar).catch(() => false)) {
+            if (await avaliar(frame, marcarBaixar).catch(() => false)) {
               const link = frame.locator('[data-cert-baixar]').first();
               await link.click({ timeout: 5000 }).catch(() => {});
               await link.evaluate((e) => e.removeAttribute('data-cert-baixar')).catch(() => {});
@@ -436,7 +445,7 @@ class Execucao {
       };
       laco = (async () => {
         while (this._concluir) {
-          await ciclo().catch(() => {});
+          await comPrazo(ciclo(), 30000).catch(() => {});
           await new Promise((r) => setTimeout(r, this.opcoes.intervaloMs));
         }
       })();
@@ -448,9 +457,9 @@ class Execucao {
     } finally {
       clearTimeout(relogio);
       this._concluir = null;
-      await laco;
+      await comPrazo(Promise.resolve(laco), 5000).catch(() => {});
       this.contexto = null;
-      if (navegador) await navegador.close().catch(() => {});
+      if (navegador) await comPrazo(navegador.close(), 10000).catch(() => {});
     }
   }
 }
