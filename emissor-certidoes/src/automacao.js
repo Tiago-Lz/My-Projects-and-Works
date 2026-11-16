@@ -355,6 +355,41 @@ class Execucao {
           } catch { /* download cancelado */ }
         });
       };
+      // (b1) Leitura direta na rede do navegador (protocolo de depuração): pega o corpo do PDF
+      // no instante em que a resposta chega, antes de o visualizador ficar com ele. É o que
+      // funciona no Edge quando a certidão abre em outra aba, e não repete o pedido ao portal.
+      const vigiadas = new WeakMap();
+      const vigiar = (pagina) => {
+        if (!vigiadas.has(pagina)) {
+          vigiadas.set(pagina, (async () => {
+            const cdp = await contexto.newCDPSession(pagina);
+            cdp.on('Fetch.requestPaused', async (ev) => {
+              try {
+                const h = Object.fromEntries((ev.responseHeaders || []).map((x) => [x.name.toLowerCase(), x.value]));
+                const tipo = h['content-type'] || '';
+                const nomePdf = /\.pdf/i.test((h['content-disposition'] || '') + ' ' + ev.request.url);
+                if (ev.responseStatusCode === 200 && (/application\/(pdf|x-pdf)/i.test(tipo) || (nomePdf && /octet-stream|force-download|binary/i.test(tipo)))) {
+                  const r = await cdp.send('Fetch.getResponseBody', { requestId: ev.requestId });
+                  entregarPdf(Buffer.from(r.body, r.base64Encoded ? 'base64' : 'latin1'), ev.request.url);
+                }
+              } catch { /* sem corpo: os outros caminhos cobrem */ }
+              cdp.send('Fetch.continueRequest', { requestId: ev.requestId }).catch(() => {});
+            });
+            await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Response', resourceType: 'Document' }] });
+          })().catch(() => {}));
+        }
+        return vigiadas.get(pagina);
+      };
+      // Uma aba nova já nasce carregando a certidão. Segurar a navegação até a vigilância
+      // estar ligada garante que nem a primeira resposta dela escape.
+      await contexto.route('**/*', async (rota) => {
+        const req = rota.request();
+        if (req.resourceType() === 'document') {
+          try { await comPrazo(vigiar(req.frame().page()), 3000); } catch { /* segue sem vigilância */ }
+        }
+        await rota.continue().catch(() => {});
+      });
+      contexto.on('page', (p) => { vigiar(p); });
       contexto.on('page', observar);
       contexto.on('response', async (r) => {
         const h = r.headers();
@@ -402,6 +437,7 @@ class Execucao {
       };
 
       contexto.pages().forEach(observar);
+      await Promise.all(contexto.pages().map(vigiar));
       const pagina = contexto.pages()[0] || await contexto.newPage();
       this.aoAtualizar('Abrindo o portal oficial…');
       await pagina.goto(this.certidao.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
