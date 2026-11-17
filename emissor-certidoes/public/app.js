@@ -477,10 +477,56 @@
     fe.smtp_seguro.value = m.smtp_seguro === '1' ? '1' : '0';
     fe.smtp_senha.value = '';
     fe.smtp_senha.placeholder = m.senha_definida ? '•••••••• (mantida)' : '';
+    await desenharPortais();
     const est = $('#email-estado');
     est.textContent = m.configurado ? 'Configurado' : 'Não configurado';
     est.className = 'estado ' + (m.configurado ? 'ok' : 'aviso');
   }
+
+  // ---------- Revisão dos endereços dos portais ----------
+  let verificacao = {};
+  async function desenharPortais() {
+    const lista = await (await api('GET', '/api/catalogo')).json();
+    const so = $('#so-problemas').checked;
+    const rotulo = (v) => {
+      if (!v) return ['Não verificado', 'neutra'];
+      if (v.ok && v.final) return [`Redireciona (${v.status})`, 'aviso'];
+      if (v.ok) return [`OK (${v.status})`, 'ok'];
+      return [v.status ? `Erro ${v.status}` : (v.erro || 'Sem resposta'), 'erro'];
+    };
+    const linhas = lista.filter((c) => !so || (verificacao[c.id] && (!verificacao[c.id].ok || verificacao[c.id].final))).map((c) => {
+      const v = verificacao[c.id];
+      const [txt, cls] = rotulo(v);
+      const campo = h('input', { value: c.url, 'aria-label': `Endereço de ${c.orgao}` });
+      return h('div', { class: 'linha portal' },
+        h('div', { class: 'principal' }, h('strong', {}, `${c.orgao} — ${c.nome}`),
+          v && v.final && h('small', {}, `Foi para: ${v.final}`),
+          c.urlOriginal && h('small', {}, `Corrigido (padrão: ${c.urlOriginal})`)),
+        campo,
+        h('span', { class: 'etiqueta ' + cls }, txt),
+        h('div', { class: 'acoes' },
+          h('a', { class: 'botao pequeno', href: c.url, target: '_blank', rel: 'noopener noreferrer' }, 'Abrir'),
+          acao('Salvar', async () => { await api('POST', `/api/dono/portais/${c.id}`, { url: campo.value }); delete verificacao[c.id]; avisar('Endereço salvo.'); await desenharPortais(); })));
+    });
+    $('#portais').replaceChildren(...(linhas.length ? linhas : [h('p', { class: 'vazio' }, so ? 'Nenhum portal com problema na última verificação.' : 'Nenhum portal.')]));
+  }
+  $('#so-problemas').addEventListener('change', () => desenharPortais().catch((e) => avisar(e.message, true)));
+  $('#btn-verificar').addEventListener('click', async (e) => {
+    const resumo = $('#verif-resumo');
+    resumo.hidden = false;
+    resumo.textContent = 'Verificando os portais… isso pode levar alguns minutos.';
+    await ocupado(e.currentTarget, async () => {
+      try {
+        const r = await (await api('POST', '/api/dono/portais/verificar')).json();
+        verificacao = Object.fromEntries(r.map((x) => [x.id, x]));
+        const ruins = r.filter((x) => !x.ok).length;
+        const redir = r.filter((x) => x.ok && x.final).length;
+        resumo.textContent = `${r.length} portais verificados: ${r.length - ruins - redir} OK, ${redir} redirecionam, ${ruins} com erro ou sem resposta.`;
+        $('#so-problemas').checked = ruins + redir > 0;
+        await desenharPortais();
+      } catch (ex) { resumo.textContent = ex.message; }
+    });
+  });
 
   $('#form-config').addEventListener('submit', async (e) => {
     e.preventDefault();

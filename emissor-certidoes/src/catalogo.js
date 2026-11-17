@@ -13,10 +13,31 @@ class Catalogo {
     this.padrao = JSON.parse(fs.readFileSync(arquivoPadrao, 'utf8'));
     this.arquivo = path.join(dirDados, 'catalogo-personalizado.json');
     this.personalizado = fs.existsSync(this.arquivo) ? JSON.parse(fs.readFileSync(this.arquivo, 'utf8')) : [];
+    // Endereços corrigidos pelo responsável na tela de revisão: valem por cima do catálogo padrão.
+    this.arquivoEnderecos = path.join(dirDados, 'catalogo-enderecos.json');
+    this.enderecos = fs.existsSync(this.arquivoEnderecos) ? JSON.parse(fs.readFileSync(this.arquivoEnderecos, 'utf8')) : {};
   }
 
   listar() {
-    return [...this.padrao, ...this.personalizado.map((c) => ({ ...c, personalizado: true }))];
+    const corrigir = (c) => (this.enderecos[c.id] ? { ...c, url: this.enderecos[c.id], urlOriginal: c.url, conferir: false } : c);
+    return [...this.padrao.map(corrigir), ...this.personalizado.map((c) => ({ ...c, personalizado: true }))];
+  }
+
+  /** Troca o endereço de um portal (vazio volta ao padrão). */
+  definirEndereco(id, url) {
+    const c = this.padrao.find((x) => x.id === id);
+    const pessoal = this.personalizado.find((x) => x.id === id);
+    if (!c && !pessoal) throw new Error('Portal não encontrado.');
+    const novo = String(url ?? '').trim();
+    if (novo) {
+      let u;
+      try { u = new URL(novo); } catch { throw new Error('Endereço inválido.'); }
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('Endereço inválido.');
+    }
+    if (pessoal) { if (!novo) throw new Error('Informe o endereço.'); pessoal.url = novo; this._salvar(); return; }
+    if (!novo || novo === c.url) delete this.enderecos[id]; else this.enderecos[id] = novo;
+    fs.mkdirSync(path.dirname(this.arquivoEnderecos), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(this.arquivoEnderecos, JSON.stringify(this.enderecos, null, 2), { mode: 0o600 });
   }
 
   obter(id) { return this.listar().find((c) => c.id === id); }

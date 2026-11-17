@@ -353,6 +353,18 @@
             </form>
           </div>
 
+          <div class="cartao col-inteira">
+            <div class="cartao-topo"><h2>Endereços dos portais</h2>
+              <div class="botoes-esq">
+                <label class="filtro-check"><input type="checkbox" id="so-problemas"> Só com problema</label>
+                <button type="button" id="btn-verificar" class="botao primario">Verificar todos</button>
+              </div>
+            </div>
+            <p class="apoio pequeno">Abre cada endereço a partir deste computador e mostra o que o portal respondeu. Corrija o endereço de um portal colando o link da página do formulário e salve.</p>
+            <p id="verif-resumo" class="apoio" hidden></p>
+            <div id="portais" class="tabela"></div>
+          </div>
+
           <div class="cartao">
             <div class="cartao-topo"><h2>Envio de e-mail</h2><span class="estado" id="email-estado"></span></div>
             <p class="apoio pequeno">Usado para enviar o código de verificação no cadastro. Sem isso, o código aparece só na janela de console do sistema.</p>

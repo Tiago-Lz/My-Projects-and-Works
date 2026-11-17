@@ -169,6 +169,27 @@ function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {
       if (eu.perfil !== 'dono') return json(res, 403, { erro: 'Área restrita ao responsável pelo sistema.' });
       if (rota === '/api/dono/resumo' && m === 'GET') return json(res, 200, banco.resumo());
       if (rota === '/api/dono/config' && m === 'POST') return json(res, 200, banco.definirConfig(await lerCorpo(req)));
+      if (rota === '/api/dono/portais/verificar' && m === 'POST') {
+        // Abre cada endereço a partir desta máquina e informa o que o portal respondeu.
+        const lista = catalogo.listar();
+        const resultado = [];
+        let proximo = 0;
+        const verificar = async (c) => {
+          const ctrl = new AbortController();
+          const relogio = setTimeout(() => ctrl.abort(), 15000);
+          try {
+            const r = await fetch(c.url, { redirect: 'follow', signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) EmissorCertidoes/1.0', Accept: 'text/html,*/*' } });
+            r.body?.cancel().catch(() => {});
+            return { id: c.id, status: r.status, final: r.url !== c.url ? r.url : '', ok: r.status < 400 };
+          } catch (e) {
+            return { id: c.id, status: 0, final: '', ok: false, erro: e.name === 'AbortError' ? 'Sem resposta em 15 s' : (e.cause && e.cause.code) || e.message };
+          } finally { clearTimeout(relogio); }
+        };
+        await Promise.all(Array.from({ length: 8 }, async () => { while (proximo < lista.length) { const c = lista[proximo++]; resultado.push(await verificar(c)); } }));
+        return json(res, 200, resultado);
+      }
+      const ep = rota.match(/^\/api\/dono\/portais\/([\w-]+)$/);
+      if (ep && m === 'POST') { catalogo.definirEndereco(ep[1], (await lerCorpo(req)).url); return json(res, 200, catalogo.obter(ep[1])); }
       if (rota === '/api/dono/email' && m === 'GET') {
         const t = banco.textos();
         return json(res, 200, { ...Object.fromEntries(email.CAMPOS.map((k) => [k, k === 'smtp_senha' ? '' : t[k] || ''])), senha_definida: Boolean(t.smtp_senha), configurado: email.configurado(t) });

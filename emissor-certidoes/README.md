@@ -107,6 +107,12 @@ Cerca de metade das entradas (marcadas com `"conferir": true`) aponta para o **s
 órgão**, não para o formulário da certidão: nesses casos navegue até o formulário e o sistema
 preenche e envia a partir dali. Substitua o endereço pelo do formulário quando o conhecer.
 
+Para revisar os endereços, o responsável usa **Configurações → Endereços dos portais →
+Verificar todos**: o sistema abre cada endereço a partir do computador e mostra o que o
+portal respondeu (OK, redirecionamento, erro ou sem resposta). Ali mesmo dá para colar o
+endereço correto do formulário e salvar; a correção fica em `catalogo-enderecos.json`, na
+pasta de dados, por cima do catálogo padrão.
+
 Os endereços mudam com frequência e **não foram testados contra os portais reais** neste
 desenvolvimento: confira cada um no primeiro uso. Para outros tribunais ou estados, use
 *Cadastrar outro portal oficial* na tela, ou edite `catalogo.json`. Campos opcionais por portal:

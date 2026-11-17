@@ -313,3 +313,7 @@ details.conta > summary small { color: var(--apoio); }
 }
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .opcao strong { color: var(--tinta); }
+.linha.portal { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) auto auto; }
+.filtro-check { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; color: var(--tinta-2); }
+#portais { max-height: 640px; overflow: auto; }
+#verif-resumo { margin: 0 0 8px; font-weight: 600; }

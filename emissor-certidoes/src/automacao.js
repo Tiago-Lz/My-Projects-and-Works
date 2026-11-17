@@ -13,7 +13,7 @@ const PADROES = [
   ['nomeMae', 'm[ãa]e|genitora'],
   ['nomePai', '\\bpai\\b|\\bgenitor\\b'],
   ['dataNascimento', 'nasc'],
-  ['documento', 'cpf.*cnpj|cnpj.*cpf'],
+  ['documento', 'cpf.*cnpj|cnpj.*cpf|n[º°o]\\.?\\s*(do\\s*)?doc|n[úu]mero\\s*(do\\s*)?doc|^\\s*documento\\s*$'],
   ['cnpj', 'cnpj'],
   ['cpf', 'cpf'],
   ['rg', '\\brg\\b|identidade'],
@@ -214,9 +214,27 @@ function comPrazo(promessa, ms) {
 }
 const avaliar = (alvo, fn, arg) => comPrazo(alvo.evaluate(fn, arg), 4000);
 
+// Executada dentro da página: marca o rádio "CPF"/"Pessoa física" (ou "CNPJ"/"Pessoa jurídica").
+/* c8 ignore start */
+function marcarTipoDoc(pj) {
+  const limpar = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').trim();
+  const alvo = pj ? /^(cnpj|pessoa juridica|juridica|pj)$/ : /^(cpf|pessoa fisica|fisica|pf)$/;
+  let n = 0;
+  for (const r of document.querySelectorAll('input[type=radio]:not([data-cert-tipo])')) {
+    const texto = limpar([...(r.labels || [])].map((l) => l.textContent).join(' ') || r.value);
+    if (!alvo.test(texto) || r.disabled) continue;
+    document.querySelectorAll(`input[type=radio][name="${CSS.escape(r.name)}"]`).forEach((x) => x.setAttribute('data-cert-tipo', '1'));
+    if (!r.checked) { r.click(); n++; }
+  }
+  return n;
+}
+/* c8 ignore stop */
+
 async function preencherFrame(frame, valores, seletores, opcoes) {
   let preenchidos = 0;
   // O modelo vem primeiro: em vários portais ele define quais campos aparecem.
+  // O tipo de documento vem antes: em vários portais ele muda a máscara do campo.
+  preenchidos += await avaliar(frame, marcarTipoDoc, valores.cnpj !== '');
   if (opcoes && opcoes.length) preenchidos += await avaliar(frame, marcarOpcoes, opcoes);
   // Seletores explícitos do catálogo têm precedência sobre a heurística.
   for (const [campo, seletor] of Object.entries(seletores || {})) {
@@ -276,6 +294,9 @@ async function abrirNavegador(headless) {
         download: { prompt_for_download: false },
       }));
       const contexto = await chromium.launchPersistentContext(perfil, {
+        // Isolamento normal do navegador, sem a faixa de "sinalizador sem suporte" (--no-sandbox).
+        // No Linux como root o Chromium não aceita o isolamento; só ali ele fica desligado.
+        chromiumSandbox: !(process.getuid && process.getuid() === 0), // sem a faixa de "sinalizador sem suporte" e com o isolamento normal do navegador
         headless, acceptDownloads: true, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', viewport: null,
         ...(canal ? { channel: canal } : {}),
       });
@@ -308,11 +329,37 @@ class Execucao {
     return abertas[abertas.length - 1] || null;
   }
 
+  /**
+   * Converte em PDF a certidão exibida em HTML, sem cortar nada.
+   * Um navegador com janela não gera PDF, e a captura de tela corta o que passa da largura.
+   * Por isso a página já renderizada é copiada para um navegador oculto, que ajusta a escala
+   * para a largura de uma folha A4 antes de gerar o PDF.
+   */
   async _imprimir(p) {
+    const html = await comPrazo(p.content(), 10000);
+    const base = p.url();
+    const semScripts = html.replace(/<script\b[\s\S]*?<\/script>/gi, '').replace(/<head([^>]*)>/i, `<head$1><base href="${base.replace(/"/g, '&quot;')}">`);
+    const { chromium } = carregarPlaywright();
+    const oculto = await chromium.launch({ headless: true, ...(canalQueFunciona ? { channel: canalQueFunciona } : {}) });
     try {
-      return { conteudo: await p.pdf({ format: 'A4', printBackground: true }), mime: 'application/pdf', ext: 'pdf' };
+      const pg = await oculto.newPage({ viewport: { width: 1280, height: 900 } });
+      await pg.setContent(semScripts, { waitUntil: 'load', timeout: 20000 }).catch(() => {});
+      await pg.emulateMedia({ media: 'print' });
+      const largura = await pg.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0));
+      const util = 794 - 2 * 38; // A4 a 96 dpi menos margens de 1 cm
+      const escala = Math.max(0.35, Math.min(1, util / Math.max(largura, 1)));
+      const conteudo = await pg.pdf({ format: 'A4', printBackground: true, scale: escala, margin: { top: '1cm', bottom: '1cm', left: '1cm', right: '1cm' } });
+      return { conteudo, mime: 'application/pdf', ext: 'pdf' };
     } catch {
-      return { conteudo: await p.screenshot({ fullPage: true }), mime: 'image/png', ext: 'png' };
+      // Último recurso: imagem da página inteira, com a janela alargada para caber tudo.
+      const largura = await p.evaluate(() => document.documentElement.scrollWidth).catch(() => 1280);
+      const antes = p.viewportSize();
+      await p.setViewportSize({ width: Math.min(Math.max(largura, 800), 2400), height: 900 }).catch(() => {});
+      const conteudo = await p.screenshot({ fullPage: true });
+      if (antes) await p.setViewportSize(antes).catch(() => {});
+      return { conteudo, mime: 'image/png', ext: 'png' };
+    } finally {
+      await oculto.close().catch(() => {});
     }
   }
 
@@ -320,7 +367,7 @@ class Execucao {
   async capturarPagina() {
     const p = this.contexto && this._paginaVisivel(this.contexto);
     if (!p) throw new Error('Nenhuma página aberta para capturar.');
-    this._finalizar({ status: 'concluido', mensagem: 'Página capturada pelo operador.', arquivo: { ...(await comPrazo(this._imprimir(p), 20000)), origem: 'captura-de-pagina', urlOrigem: p.url() } });
+    this._finalizar({ status: 'concluido', mensagem: 'Página capturada pelo operador.', arquivo: { ...(await comPrazo(this._imprimir(p), 45000)), origem: 'captura-de-pagina', urlOrigem: p.url() } });
   }
 
   async executar() {
@@ -505,7 +552,7 @@ class Execucao {
         const visivel = this._paginaVisivel(contexto);
         const sinal = visivel ? await avaliar(visivel, pareceCertidao).catch(() => '') : '';
         if (sinal === 'impressao' || (sinal === 'texto' && ++certidaoVista >= 2)) {
-          const arquivo = await comPrazo(this._imprimir(visivel), 20000);
+          const arquivo = await comPrazo(this._imprimir(visivel), 45000);
           return this._finalizar({ status: 'concluido', mensagem: 'Certidão exibida pelo portal e salva em PDF.', arquivo: { ...arquivo, origem: 'captura-de-pagina', urlOrigem: visivel.url() } });
         }
         if (sinal !== 'texto') certidaoVista = 0;

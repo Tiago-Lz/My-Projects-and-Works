@@ -110,3 +110,26 @@ test('certidão exibida em HTML é salva em PDF; página de erro não', { timeou
   }, {}, 20000);
   assert.equal(erro.r.status, 'erro'); // esgota o tempo sem capturar a página de erro
 });
+
+test('formulário no estilo do TRT2: "Nº Doc." e escolha CPF/CNPJ', { timeout: 150000 }, async () => {
+  const { r, posts } = await rodar({
+    'GET /': ['text/html', html(`<form method="post" action="/emitir">
+      <label>Tipo Doc.:</label><label><input type="radio" name="td" value="1"> CNPJ</label><label><input type="radio" name="td" value="2" checked> Outro</label><label><input type="radio" name="td" value="3"> CPF</label>
+      <label for="d">Nº Doc.:</label><input id="d" name="numdoc">
+      <label for="n">Nome :</label><input id="n" name="nm">
+      <button>Enviar Solicitação</button><button type="button">Limpar dados</button></form>`)],
+    'POST /emitir': ['application/pdf', PDF],
+  });
+  assert.equal(r.status, 'concluido', r.mensagem);
+  assert.deepEqual([posts[0].td, posts[0].numdoc, posts[0].nm], ['3', '529.982.247-25', 'Maria da Silva']);
+});
+
+test('certidão em HTML mais larga que a folha vira PDF inteiro', { timeout: 150000 }, async () => {
+  const largo = `<table style="width:1600px;border:1px solid"><tr><td>CERTIDÃO NEGATIVA — Certifico que NADA CONSTA em nome de Maria da Silva. ${'Observação longa que ultrapassa a largura da folha. '.repeat(20)} FIM-DA-LINHA</td></tr></table><p>Código de validação: 1234-ABCD</p>`;
+  const { r } = await rodar({
+    'GET /': ['text/html', html(`<form method="post" action="/emitir">${CAMPOS}<button>Emitir</button></form>`)],
+    'POST /emitir': ['text/html', html(`<h1>Certidão</h1>${largo}`)],
+  });
+  assert.equal(r.status, 'concluido', r.mensagem);
+  assert.equal(r.arquivo.mime, 'application/pdf');
+});
