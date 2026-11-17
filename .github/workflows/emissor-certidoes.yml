@@ -1,0 +1,49 @@
+name: Emissor de Certidões
+
+on:
+  push:
+    paths: ['emissor-certidoes/**', '.github/workflows/emissor-certidoes.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: emissor-certidoes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Testes (usam o Edge do runner)
+        run: npm test
+        timeout-minutes: 8
+      - name: Gerar o executável
+        run: npm run build
+      - name: Conferir que o executável sobe
+        shell: pwsh
+        run: |
+          $env:PORTA = '8799'
+          $env:CERTIDOES_DADOS = Join-Path $env:RUNNER_TEMP 'dados'
+          $p = Start-Process -FilePath dist\EmissorCertidoes\EmissorCertidoes.exe -PassThru
+          $ok = $false
+          foreach ($i in 1..30) {
+            Start-Sleep -Seconds 1
+            try { $r = Invoke-RestMethod http://127.0.0.1:8799/api/estado; $ok = $true; break } catch {}
+          }
+          if (-not $ok) { Stop-Process -Id $p.Id -Force; throw 'O executável não respondeu.' }
+          if ($r.diasRetencao -ne 7 -or $null -ne $r.usuario) { throw 'Resposta inesperada.' }
+          $l = Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"usuario":"adm","senha":"Adulao57@"}' http://127.0.0.1:8799/api/entrar
+          Stop-Process -Id $p.Id -Force
+          if ($l.usuario.perfil -ne 'dono') { throw 'Login do responsável falhou.' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmissorCertidoes-windows
+          path: emissor-certidoes/dist/EmissorCertidoes
+          retention-days: 30
