@@ -11,12 +11,15 @@ const { Banco, DIAS_RETENCAO } = require('./src/banco');
 const { Catalogo } = require('./src/catalogo');
 const { Pedidos } = require('./src/pedidos');
 const { normalizarPessoa } = require('./src/validacao');
+const email = require('./src/email');
 
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 const OCIOSO_MS = 30 * 60 * 1000;
 
-function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {}, catalogoPadrao } = {}) {
+function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {}, catalogoPadrao, enviarCodigo } = {}) {
   const banco = new Banco(dirDados);
+  const enviar = enviarCodigo || email.criarEnviador(banco);
+  const cadastros = new Map(); // id -> cadastro em andamento (só em memória, expira em 30 min)
   const catalogo = new Catalogo(dirDados, catalogoPadrao || path.join(dirRecursos, 'catalogo.json'));
   const pedidos = new Pedidos(banco, automacao);
   const dirPublico = path.join(dirRecursos, 'public');
@@ -75,20 +78,76 @@ function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {
     const m = req.method;
     const s = sessaoDe(req);
 
-    if (rota === '/api/estado' && m === 'GET') return json(res, 200, { configurado: banco.temDono(), usuario: s ? s.usuario : null, diasRetencao: DIAS_RETENCAO });
-    // Três portas de entrada: o dono (uma única vez), o escritório pagante e o convidado.
-    if (rota === '/api/configurar' && m === 'POST') return json(res, 201, abrirSessao(banco.criarDono(await lerCorpo(req))));
-    if (rota === '/api/contas' && m === 'POST') {
-      if (!banco.temDono()) throw new Error('O sistema ainda não foi configurado pelo responsável.');
-      return json(res, 201, abrirSessao(banco.criarConta(await lerCorpo(req))));
-    }
-    if (rota === '/api/convites/usar' && m === 'POST') {
+    if (rota === '/api/estado' && m === 'GET') return json(res, 200, { usuario: s ? s.usuario : null, diasRetencao: DIAS_RETENCAO });
+
+    // ---------- Cadastro em etapas: tipo → dados → código no e-mail → senha ----------
+    if (rota.startsWith('/api/cadastro/') && m === 'POST') {
       const corpo = await lerCorpo(req);
-      const ip = 'convite';
-      const n = falhas.get(ip) || 0;
-      await new Promise((r) => setTimeout(r, Math.min(n, 10) * 500)); // freia a adivinhação de chaves
-      try { const r = banco.usarConvite(corpo); falhas.delete(ip); return json(res, 201, abrirSessao(r)); } catch (e) { if (/convite/.test(e.message)) falhas.set(ip, n + 1); throw e; }
+      const agora = Date.now();
+      for (const [id, c] of cadastros) if (c.expira < agora) cadastros.delete(id);
+      const hashCodigo = (id, codigo) => crypto.createHash('sha256').update(id + ':' + String(codigo).trim()).digest();
+      const novoCodigo = async (id, c) => {
+        if (c.envios >= 5) throw new Error('Limite de reenvios atingido. Recomece o cadastro.');
+        const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+        c.codigo = hashCodigo(id, codigo);
+        c.codigoExpira = Date.now() + 10 * 60 * 1000;
+        c.tentativas = 0;
+        c.envios++;
+        c.ultimoEnvio = Date.now();
+        try { c.modoEnvio = (await enviar({ para: c.dados.email, nome: c.dados.nome, codigo })).modo; } catch (e) {
+          throw new Error('Não foi possível enviar o e-mail de verificação. Tente novamente em instantes.');
+        }
+      };
+      const mascarar = (e) => e.replace(/^(.)(.*)(@.*)$/, (_, a, meio, dom) => a + '•'.repeat(Math.min(meio.length, 6)) + dom);
+      const pegar = () => {
+        const c = cadastros.get(String(corpo.id || ''));
+        if (!c) throw new Error('Cadastro expirado. Recomece.');
+        return c;
+      };
+
+      if (rota === '/api/cadastro/iniciar') {
+        const tipo = corpo.tipo === 'convite' ? 'convite' : 'escritorio';
+        const dados = banco.validarNovo(corpo);
+        if (tipo === 'escritorio') {
+          dados.escritorio = String(corpo.escritorio ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
+          if (dados.escritorio.length < 2) throw new Error('Informe o nome do escritório.');
+        } else {
+          const n = falhas.get('convite') || 0;
+          await new Promise((r) => setTimeout(r, Math.min(n, 10) * 500)); // freia a adivinhação de chaves
+          try { dados.conta = banco.conferirConvite(corpo.chave).conta.nome; falhas.delete('convite'); } catch (e) { falhas.set('convite', n + 1); throw e; }
+          dados.chave = String(corpo.chave).trim().toUpperCase();
+        }
+        const id = crypto.randomBytes(16).toString('hex');
+        const c = { tipo, dados, envios: 0, verificado: false, expira: agora + 30 * 60 * 1000 };
+        await novoCodigo(id, c);
+        cadastros.set(id, c);
+        return json(res, 201, { id, email: mascarar(dados.email), conta: dados.conta, modoEnvio: c.modoEnvio });
+      }
+      if (rota === '/api/cadastro/reenviar') {
+        const c = pegar();
+        if (Date.now() - c.ultimoEnvio < 30000) throw new Error('Aguarde alguns segundos para pedir outro código.');
+        await novoCodigo(String(corpo.id), c);
+        return json(res, 200, { modoEnvio: c.modoEnvio });
+      }
+      if (rota === '/api/cadastro/verificar') {
+        const c = pegar();
+        if (c.codigoExpira < Date.now()) throw new Error('Código vencido. Peça um novo.');
+        if (c.tentativas >= 5) throw new Error('Muitas tentativas. Peça um novo código.');
+        c.tentativas++;
+        if (!crypto.timingSafeEqual(c.codigo, hashCodigo(String(corpo.id), corpo.codigo))) throw new Error('Código incorreto.');
+        c.verificado = true;
+        return json(res, 200, {});
+      }
+      if (rota === '/api/cadastro/concluir') {
+        const c = pegar();
+        if (!c.verificado) throw new Error('Confirme o código enviado ao e-mail.');
+        const d = { ...c.dados, senha: corpo.senha };
+        const r = c.tipo === 'escritorio' ? banco.criarConta(d) : banco.usarConvite(d);
+        cadastros.delete(String(corpo.id));
+        return json(res, 201, abrirSessao(r));
+      }
     }
+
     if (rota === '/api/entrar' && m === 'POST') {
       const corpo = await lerCorpo(req);
       return entrar(res, corpo, () => banco.autenticar(corpo.usuario, corpo.senha));
@@ -110,6 +169,23 @@ function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {
       if (eu.perfil !== 'dono') return json(res, 403, { erro: 'Área restrita ao responsável pelo sistema.' });
       if (rota === '/api/dono/resumo' && m === 'GET') return json(res, 200, banco.resumo());
       if (rota === '/api/dono/config' && m === 'POST') return json(res, 200, banco.definirConfig(await lerCorpo(req)));
+      if (rota === '/api/dono/email' && m === 'GET') {
+        const t = banco.textos();
+        return json(res, 200, { ...Object.fromEntries(email.CAMPOS.map((k) => [k, k === 'smtp_senha' ? '' : t[k] || ''])), senha_definida: Boolean(t.smtp_senha), configurado: email.configurado(t) });
+      }
+      if (rota === '/api/dono/email' && m === 'POST') {
+        const corpo = await lerCorpo(req);
+        const novo = Object.fromEntries(email.CAMPOS.filter((k) => k in corpo && !(k === 'smtp_senha' && corpo[k] === '')).map((k) => [k, String(corpo[k]).trim().slice(0, 200)]));
+        banco.definirTextos(novo);
+        return json(res, 200, {});
+      }
+      if (rota === '/api/dono/email/teste' && m === 'POST') {
+        const { para } = await lerCorpo(req);
+        const t = banco.textos();
+        if (!email.configurado(t)) throw new Error('Preencha e salve o servidor SMTP e o remetente primeiro.');
+        try { await email.enviarSmtp(t, { para, assunto: 'Teste do Emissor de Certidões', texto: 'O envio de e-mails está funcionando.' }); } catch (e) { throw new Error('Falha no envio: ' + e.message); }
+        return json(res, 200, {});
+      }
       const d = rota.match(/^\/api\/dono\/contas\/(\d+)(\/pagamentos)?$/);
       if (d && m === 'POST') {
         const corpo = await lerCorpo(req);
@@ -209,7 +285,7 @@ function criarServidor({ dirDados, dirRecursos = __dirname, porta, automacao = {
     try {
       if (rota.startsWith('/api/')) return await api(req, res, rota);
       if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
-      const nome = rota === '/' ? 'index.html' : path.basename(rota);
+      const nome = path.extname(rota) ? path.basename(rota) : 'index.html';
       const arquivo = path.join(dirPublico, nome);
       if (!TIPOS[path.extname(nome)] || !fs.existsSync(arquivo)) { res.writeHead(404); return res.end('Não encontrado'); }
       res.writeHead(200, { 'Content-Type': TIPOS[path.extname(nome)], 'Cache-Control': 'no-cache' });

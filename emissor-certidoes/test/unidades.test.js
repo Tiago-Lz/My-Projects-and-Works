@@ -38,32 +38,36 @@ test('formata valores conforme o campo do portal', () => {
 test('banco: dono, escritório pagante, convite, limites, mensalidade e retenção', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'banco-'));
   const b = new Banco(dir);
-  assert.throws(() => b.criarDono({ usuario: 'dono', nome: 'Dono', senha: 'curta' }), /8 caracteres/);
-  const dono = b.criarDono({ usuario: 'Dono', nome: 'Tiago', senha: 'senha-do-dono-1' });
+  // O responsável pelo sistema já existe, com acesso único: adm / Adulao57@.
+  const dono = b.autenticar('ADM', 'Adulao57@');
   assert.equal(dono.usuario.perfil, 'dono');
   assert.equal(dono.chave, null); // o dono não tem como abrir certidões
-  assert.throws(() => b.criarDono({ usuario: 'outro', nome: 'Outro', senha: 'senha-outro-1' }), /já foi configurado/);
+  assert.equal(b.autenticar('adm', 'adulao57@'), null);
+  assert.throws(() => b.criarConta({ escritorio: 'X Adv', nome: 'Ana Souza', email: 'ana@x.com', senha: 'curta' }), /8 caracteres/);
+  assert.throws(() => b.criarConta({ escritorio: 'X Adv', nome: 'Ana Souza', email: 'ana@x.com', senha: 'semnumero!' }), /um número/);
+  assert.throws(() => b.criarConta({ escritorio: 'X Adv', nome: 'Ana', email: 'ana@x.com', senha: 'Senha-da-ana-1' }), /nome completo/);
+  assert.throws(() => b.criarConta({ escritorio: 'X Adv', nome: 'Ana Souza', email: 'ana@', senha: 'Senha-da-ana-1' }), /e-mail/);
 
   // Dono define os padrões; o escritório nasce com eles, em período de teste.
   b.definirConfig({ valor_mensal_centavos: 15000, limite_usuarios: 2, limite_certidoes_mes: 3, dias_teste: 5 });
-  const ana = b.criarConta({ escritorio: 'Souza Advogados', usuario: 'ana', nome: 'Ana Souza', senha: 'senha-da-ana-1' });
+  const ana = b.criarConta({ escritorio: 'Souza Advogados', email: 'Ana@Souza.adv.br', nome: 'Ana Souza', senha: 'senha-da-ana-1' });
   assert.equal(ana.usuario.perfil, 'admin');
   let conta = b.conta(ana.usuario.conta_id);
   assert.deepEqual([conta.valor_mensal_centavos, conta.limite_usuarios, conta.limite_certidoes_mes, conta.situacao], [15000, 2, 3, 'em dia']);
   assert.equal(Math.round((new Date(conta.vence_em) - Date.now()) / 86400000), 5);
-  assert.equal(b.autenticar('ana', 'senha-errada-1'), null);
-  assert.throws(() => b.criarConta({ escritorio: 'Outro', usuario: 'ana', nome: 'Outra', senha: 'senha-qualquer' }), /Já existe/);
+  assert.equal(b.autenticar('ana@souza.adv.br', 'senha-errada-1'), null);
+  assert.throws(() => b.criarConta({ escritorio: 'Outro', email: 'ana@souza.adv.br', nome: 'Outra Pessoa', senha: 'senha-qualquer-1' }), /Já existe/);
 
   // Convite: chave aleatória de uso único, que carrega a chave de dados da conta.
   const convite = b.criarConvite(conta.id, ana.chave);
   assert.match(convite.chave, /^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}$/);
   assert.ok(!fs.readFileSync(path.join(dir, 'emissor.db')).includes(convite.chave));
-  assert.throws(() => b.usarConvite({ chave: 'AAAAA-BBBBB-CCCCC-DDDDD', usuario: 'bia', nome: 'Bia', senha: 'senha-da-bia-1' }), /inválida/);
-  const bia = b.usarConvite({ chave: convite.chave.toLowerCase(), usuario: 'bia', nome: 'Bia Lima', senha: 'senha-da-bia-1' });
+  assert.throws(() => b.usarConvite({ chave: 'AAAAA-BBBBB-CCCCC-DDDDD', email: 'bia@souza.adv.br', nome: 'Bia Lima', senha: 'senha-da-bia-1' }), /inválida/);
+  const bia = b.usarConvite({ chave: convite.chave.toLowerCase(), email: 'bia@souza.adv.br', nome: 'Bia Lima', senha: 'senha-da-bia-1' });
   assert.equal(bia.usuario.perfil, 'usuario');
   assert.equal(bia.usuario.conta_id, conta.id);
   assert.deepEqual(bia.chave, ana.chave);
-  assert.throws(() => b.usarConvite({ chave: convite.chave, usuario: 'caio', nome: 'Caio', senha: 'senha-do-caio-1' }), /inválida/); // já usada
+  assert.throws(() => b.usarConvite({ chave: convite.chave, email: 'caio@outro.adv.br', nome: 'Caio Lopes', senha: 'senha-do-caio-1' }), /inválida/); // já usada
   assert.throws(() => b.criarConvite(conta.id, ana.chave), /permite 2 usuário/); // limite do plano
 
   // Certidões: o usuário vê as suas, o admin vê as da conta, outra conta não vê nada.
@@ -72,7 +76,7 @@ test('banco: dono, escritório pagante, convite, limites, mensalidade e retenç�
   assert.ok(!fs.readFileSync(path.join(dir, 'arquivos', id + '.enc')).includes('segredo'));
   assert.equal(b.lerArquivo(id, ana.chave).toString(), '%PDF-segredo');
   assert.equal(b.arquivos(ana.usuario).length, 1);
-  const outro = b.criarConta({ escritorio: 'Outro Escritório', usuario: 'caio', nome: 'Caio', senha: 'senha-do-caio-1' });
+  const outro = b.criarConta({ escritorio: 'Outro Escritório', email: 'caio@outro.adv.br', nome: 'Caio Lopes', senha: 'senha-do-caio-1' });
   assert.equal(b.arquivos(outro.usuario).length, 0);
   assert.equal(b.arquivo(id, outro.usuario), null);
   assert.notDeepEqual(outro.chave, ana.chave);
@@ -96,10 +100,10 @@ test('banco: dono, escritório pagante, convite, limites, mensalidade e retenç�
 
   // Troca de senha mantém o acesso; desativar bloqueia o login.
   b.definirSenha(bia.usuario.id, 'senha-nova-bia-2', bia.chave);
-  assert.equal(b.autenticar('bia', 'senha-da-bia-1'), null);
-  assert.deepEqual(b.autenticar('bia', 'senha-nova-bia-2').chave, ana.chave);
+  assert.equal(b.autenticar('bia@souza.adv.br', 'senha-da-bia-1'), null);
+  assert.deepEqual(b.autenticar('bia@souza.adv.br', 'senha-nova-bia-2').chave, ana.chave);
   b.definirAtivo(bia.usuario.id, false);
-  assert.equal(b.autenticar('bia', 'senha-nova-bia-2'), null);
+  assert.equal(b.autenticar('bia@souza.adv.br', 'senha-nova-bia-2'), null);
 
   // Passado o prazo, a certidão some do banco e do disco.
   assert.equal(b.limparVencidos(new Date(Date.now() + 6.9 * 86400000)), 0);

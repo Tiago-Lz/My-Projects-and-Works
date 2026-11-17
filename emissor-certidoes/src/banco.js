@@ -27,12 +27,16 @@ const { derivar, cifrar, decifrar, iguais } = require('./cripto');
 const DIAS_RETENCAO = 7;
 const DIAS_CONVITE = 7;
 const DIA = 86400000;
-const VERSAO = 2;
+const VERSAO = 3;
+
+// Conta única do responsável pelo sistema (login "adm"). Só o hash da senha fica no código.
+const DONO = { usuario: 'adm', nome: 'Administrador do sistema', sal: 'c7127adc264e6a7d9a560f09458b6c94', hash: '06d8e204ab075038881a5b32df8ef6f93986a3051d006ab5d0fd1c4ead0f5d07' };
 
 const PADROES = { valor_mensal_centavos: 9900, limite_usuarios: 3, limite_certidoes_mes: 200, dias_teste: 7 };
 
 const ESQUEMA = `
 CREATE TABLE IF NOT EXISTS config (chave TEXT PRIMARY KEY, valor INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS config_texto (chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS contas (
   id                    INTEGER PRIMARY KEY,
   nome                  TEXT NOT NULL,
@@ -47,6 +51,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   id            INTEGER PRIMARY KEY,
   conta_id      INTEGER REFERENCES contas(id),
   usuario       TEXT NOT NULL UNIQUE,
+  email         TEXT UNIQUE,
   nome          TEXT NOT NULL,
   perfil        TEXT NOT NULL CHECK (perfil IN ('dono', 'admin', 'usuario')),
   sal           BLOB NOT NULL,
@@ -117,6 +122,17 @@ class Banco {
     this.db.exec(`PRAGMA foreign_keys = ON; PRAGMA user_version = ${VERSAO};` + ESQUEMA);
     const ins = this.db.prepare('INSERT OR IGNORE INTO config (chave, valor) VALUES (?, ?)');
     for (const [k, v] of Object.entries(PADROES)) ins.run(k, v);
+    if (!this.temDono()) {
+      this._exec("INSERT INTO usuarios (usuario, nome, perfil, sal, senha_hash, criado_em) VALUES (?, ?, 'dono', ?, ?, ?)",
+        DONO.usuario, DONO.nome, Buffer.from(DONO.sal, 'hex'), Buffer.from(DONO.hash, 'hex'), agoraIso());
+    }
+  }
+
+  // ---------- Configuração de texto (envio de e-mail) ----------
+  textos() { return Object.fromEntries(this._todos('SELECT chave, valor FROM config_texto').map((r) => [r.chave, r.valor])); }
+  definirTextos(obj) {
+    const ins = this.db.prepare('INSERT INTO config_texto (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor');
+    for (const [k, v] of Object.entries(obj)) ins.run(k, String(v ?? ''));
   }
 
   fechar() { this.db.close(); }
@@ -141,41 +157,41 @@ class Banco {
   // ---------- Usuários ----------
   temDono() { return this._um("SELECT COUNT(*) AS n FROM usuarios WHERE perfil = 'dono'").n > 0; }
 
-  _validar({ usuario, nome, senha }) {
-    const u = String(usuario ?? '').trim().toLowerCase();
+  /** Normaliza e confere nome e e-mail de um novo usuário (o e-mail é o login). */
+  validarNovo({ nome, email }) {
+    const e = String(email ?? '').trim().toLowerCase();
     const n = String(nome ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
-    if (!/^[a-z0-9._-]{3,32}$/.test(u)) throw new Error('Usuário: use de 3 a 32 letras, números, ponto, hífen ou sublinhado.');
-    if (n.length < 2) throw new Error('Informe o nome.');
-    this._validarSenha(senha);
-    if (this._um('SELECT 1 AS x FROM usuarios WHERE usuario = ?', u)) throw new Error('Já existe um usuário com esse login.');
-    return { usuario: u, nome: n };
+    if (n.split(' ').length < 2 || n.length < 5) throw new Error('Informe seu nome completo.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) || e.length > 120) throw new Error('Informe um e-mail válido.');
+    if (this._um('SELECT 1 AS x FROM usuarios WHERE usuario = ? OR email = ?', e, e)) throw new Error('Já existe uma conta com este e-mail. Use "Entrar".');
+    return { usuario: e, email: e, nome: n };
   }
 
   _validarSenha(senha) {
-    if (String(senha ?? '').length < 8) throw new Error('A senha deve ter ao menos 8 caracteres.');
+    const s = String(senha ?? '');
+    const falta = [];
+    if (s.length < 8) falta.push('8 caracteres');
+    if (!/[A-Za-zÀ-ÿ]/.test(s)) falta.push('uma letra');
+    if (!/\d/.test(s)) falta.push('um número');
+    if (!/[^A-Za-zÀ-ÿ0-9]/.test(s)) falta.push('um símbolo');
+    if (falta.length) throw new Error('A senha precisa ter ao menos ' + falta.join(', ') + '.');
   }
 
-  _inserir({ usuario, nome, senha, perfil, contaId }, chave) {
+  _inserir({ usuario, email, nome, senha, perfil, contaId }, chave) {
     const sal = crypto.randomBytes(16);
     const { verificador, kek } = derivar(senha, sal);
-    const r = this._exec('INSERT INTO usuarios (conta_id, usuario, nome, perfil, sal, senha_hash, chave_cifrada, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      contaId ?? null, usuario, nome, perfil, sal, verificador, chave ? cifrar(kek, chave) : null, agoraIso());
+    this._validarSenha(senha);
+    const r = this._exec('INSERT INTO usuarios (conta_id, usuario, email, nome, perfil, sal, senha_hash, chave_cifrada, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      contaId ?? null, usuario, email ?? null, nome, perfil, sal, verificador, chave ? cifrar(kek, chave) : null, agoraIso());
     return Number(r.lastInsertRowid);
-  }
-
-  /** Primeiro acesso: cria o dono do sistema. */
-  criarDono(dados) {
-    if (this.temDono()) throw new Error('O sistema já foi configurado.');
-    const v = this._validar(dados);
-    this._inserir({ ...v, senha: dados.senha, perfil: 'dono' }, null);
-    return this.autenticar(v.usuario, dados.senha);
   }
 
   /** Cadastro de um escritório: cria a conta (em período de teste) e o administrador pagante. */
   criarConta(dados) {
     const escritorio = String(dados.escritorio ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
     if (escritorio.length < 2) throw new Error('Informe o nome do escritório.');
-    const v = this._validar(dados);
+    const v = this.validarNovo(dados);
+    this._validarSenha(dados.senha); // antes de criar a conta, para não deixar conta sem usuário
     const cfg = this.config();
     const conta = this._exec('INSERT INTO contas (nome, valor_mensal_centavos, limite_usuarios, limite_certidoes_mes, vence_em, criado_em) VALUES (?, ?, ?, ?, ?, ?)',
       escritorio, cfg.valor_mensal_centavos, cfg.limite_usuarios, cfg.limite_certidoes_mes, new Date(Date.now() + cfg.dias_teste * DIA).toISOString(), agoraIso());
@@ -200,8 +216,8 @@ class Banco {
     this._exec('UPDATE usuarios SET sal = ?, senha_hash = ?, chave_cifrada = ? WHERE id = ?', sal, verificador, chave ? cifrar(kek, chave) : null, id);
   }
 
-  usuario(id) { return this._um('SELECT id, conta_id, usuario, nome, perfil, ativo, criado_em FROM usuarios WHERE id = ?', id); }
-  usuariosDaConta(contaId) { return this._todos('SELECT id, usuario, nome, perfil, ativo, criado_em FROM usuarios WHERE conta_id = ? ORDER BY perfil, nome', contaId); }
+  usuario(id) { return this._um('SELECT id, conta_id, usuario, email, nome, perfil, ativo, criado_em FROM usuarios WHERE id = ?', id); }
+  usuariosDaConta(contaId) { return this._todos('SELECT id, usuario, email, nome, perfil, ativo, criado_em FROM usuarios WHERE conta_id = ? ORDER BY perfil, nome', contaId); }
 
   definirAtivo(id, ativo) {
     const u = this.usuario(id);
@@ -235,20 +251,26 @@ class Banco {
     return this._um('SELECT COUNT(*) AS n FROM convites WHERE conta_id = ? AND expira_em > ?', contaId, agoraIso()).n;
   }
 
-  /** Cadastro com chave de convite: o usuário passa a usar a conta de quem gerou a chave. */
-  usarConvite(dados) {
-    const codigo = String(dados.chave ?? '').trim().toUpperCase();
-    let achado = null;
-    let chave = null;
+  /** Confere uma chave sem gastá-la. Devolve { convite, chave, conta } ou lança erro. */
+  conferirConvite(codigoBruto) {
+    const codigo = String(codigoBruto ?? '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{5}(-[A-Z0-9]{5}){3}$/.test(codigo)) throw new Error('Chave de convite inválida ou vencida.');
     for (const c of this._todos('SELECT * FROM convites WHERE expira_em > ?', agoraIso())) {
       const { verificador, kek } = derivar(codigo, c.sal);
-      if (iguais(verificador, Buffer.from(c.codigo_hash))) { achado = c; chave = decifrar(kek, Buffer.from(c.chave_cifrada)); break; }
+      if (iguais(verificador, Buffer.from(c.codigo_hash))) {
+        this._conferirVaga(c.conta_id);
+        return { convite: c, chave: decifrar(kek, Buffer.from(c.chave_cifrada)), conta: this._um('SELECT id, nome FROM contas WHERE id = ?', c.conta_id) };
+      }
     }
-    if (!achado) throw new Error('Chave de convite inválida ou vencida.');
-    const v = this._validar(dados);
-    this._conferirVaga(achado.conta_id);
-    this._inserir({ ...v, senha: dados.senha, perfil: 'usuario', contaId: achado.conta_id }, chave);
-    this._exec('DELETE FROM convites WHERE id = ?', achado.id);
+    throw new Error('Chave de convite inválida ou vencida.');
+  }
+
+  /** Cadastro com chave de convite: o usuário passa a usar a conta de quem gerou a chave. */
+  usarConvite(dados) {
+    const { convite, chave } = this.conferirConvite(dados.chave);
+    const v = this.validarNovo(dados);
+    this._inserir({ ...v, senha: dados.senha, perfil: 'usuario', contaId: convite.conta_id }, chave);
+    this._exec('DELETE FROM convites WHERE id = ?', convite.id);
     return this.autenticar(v.usuario, dados.senha);
   }
 

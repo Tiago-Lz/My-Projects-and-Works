@@ -46,21 +46,39 @@ Para rodar sem empacotar: `npm install` e `npm start` (abre em http://127.0.0.1:
 Variáveis opcionais: `PORTA` (padrão 8787), `CERTIDOES_DADOS` (pasta dos dados) e
 `CERTIDOES_NAVEGADOR` (`msedge` ou `chrome`).
 
+## Telas
+
+| Endereço | Para quem | Conteúdo |
+|---|---|---|
+| `/entrar` | Todos | Login por e-mail (ou `adm` para o responsável) |
+| `/cadastro` | Novos usuários | Cadastro em 4 etapas: tipo de conta → dados → código no e-mail → senha |
+| `/emitir` | Escritórios | Pesquisado, catálogo por estado e pedidos em andamento |
+| `/certidoes` | Escritórios | Certidões guardadas, com abrir, baixar e excluir |
+| `/conta` | Escritórios | Perfil, plano e uso, equipe e chaves de convite, pagamentos, senha |
+| `/painel` | Responsável | Indicadores e gestão dos escritórios |
+| `/configuracoes` | Responsável | Valores padrão, envio de e-mail (SMTP) e senha |
+
 ## Perfis de acesso
 
 | Perfil | Como entra | O que faz |
 |---|---|---|
-| **Dono do sistema** | Primeiro acesso | Vê escritórios, usuários, uso e mensalidades; altera valores e limites; registra pagamentos; suspende contas. Não emite certidões e não consegue abrir as dos clientes. |
-| **Administrador pagante** | *Cadastrar meu escritório* | Tem a conta do escritório (com período de teste), emite certidões, gera chaves de convite, gerencia os usuários da conta e vê as certidões de todos eles. |
-| **Usuário** | Chave de convite gerada pelo administrador | Emite certidões na conta do escritório e vê apenas as suas. |
+| **Responsável pelo sistema** | Acesso único e fixo: usuário `adm` | Vê escritórios, usuários, uso e mensalidades; altera valores e limites; registra pagamentos; suspende contas; configura o envio de e-mail. Não emite certidões e não consegue abrir as dos clientes. |
+| **Administrador pagante** | *Criar conta → Sou um escritório* | Tem a conta do escritório (com período de teste), emite certidões, gera chaves de convite, gerencia a equipe e vê as certidões de todos dela. |
+| **Usuário** | *Criar conta → Tenho uma chave de convite* | Emite certidões na conta do escritório e vê apenas as suas. |
+
+O cadastro confirma o e-mail com um código de 6 dígitos (vale 10 minutos, 5 tentativas,
+reenvio após 30 segundos). Para enviar o código por e-mail, o responsável preenche o
+servidor SMTP em **Configurações**; enquanto isso não for feito, o código aparece apenas
+na janela de console do sistema. A senha precisa de 8 caracteres, uma letra, um número e
+um símbolo. A senha do servidor SMTP fica gravada sem cifra no banco local.
 
 A emissão é bloqueada quando a mensalidade vence, a conta é suspensa ou o limite mensal de
 certidões é atingido. A chave de convite é aleatória, de uso único e vale 7 dias.
 
 **Limitação importante:** as contas ficam no banco local (`emissor.db`) desta instalação.
-O dono só enxerga escritórios cadastrados na mesma máquina. Para vender a escritórios
-diferentes, cada um na sua máquina, o cadastro de contas e mensalidades precisa ir para um
-servidor central; o pagamento hoje é registrado manualmente pelo dono.
+O responsável só enxerga escritórios cadastrados na mesma máquina. Para vender a
+escritórios diferentes, cada um na sua máquina, o cadastro de contas e mensalidades precisa
+ir para um servidor central; o pagamento hoje é registrado manualmente.
 
 ## O que é e o que não é armazenado
 

@@ -43,7 +43,8 @@ test('solicita no portal, captura o PDF expedido e guarda cifrado', { timeout: 1
   fs.writeFileSync(cat, JSON.stringify([
     { id: 'falso', esfera: 'estadual', uf: 'ZZ', orgao: 'TJ-Teste', nome: 'Certidão', natureza: ['civel'], pessoas: ['PF'], url: portal.url, opcoes: ['falencia', 'eleitora'] },
   ]));
-  const app = criarServidor({ dirDados: path.join(dir, 'dados'), porta: 0, catalogoPadrao: cat, automacao: { headless: true, intervaloMs: 200, tempoLimiteMs: 60000 } });
+  const codigos = new Map(); // e-mail -> último código enviado
+  const app = criarServidor({ enviarCodigo: async ({ para, codigo }) => { codigos.set(para, codigo); return { modo: 'email' }; }, dirDados: path.join(dir, 'dados'), porta: 0, catalogoPadrao: cat, automacao: { headless: true, intervaloMs: 200, tempoLimiteMs: 60000 } });
   const porta = await app.iniciar();
   const base = `http://127.0.0.1:${porta}`;
   let sessao = '';
@@ -62,17 +63,33 @@ test('solicita no portal, captura o PDF expedido e guarda cifrado', { timeout: 1
     assert.equal(await statusComHost('malicioso.example'), 403);
     assert.equal(await statusComHost(`localhost:${porta}`), 200);
 
-    // Primeiro acesso cria o dono; ele gerencia contas mas não emite certidões.
-    const dono = (await (await chamar('POST', '/api/configurar', { usuario: 'dono', nome: 'Tiago', senha: 'senha-do-dono-1' })).json()).sessao;
-    assert.equal((await chamar('POST', '/api/configurar', { usuario: 'x', nome: 'X', senha: 'senha-qualquer' })).status, 400);
+    // Cadastro em etapas, como a tela faz: dados → código no e-mail → senha.
+    const cadastrar = async (dados, senha) => {
+      const ini = await chamar('POST', '/api/cadastro/iniciar', dados);
+      if (ini.status !== 201) return ini;
+      const { id } = await ini.json();
+      const email = dados.email.toLowerCase();
+      assert.equal((await chamar('POST', '/api/cadastro/concluir', { id, senha })).status, 400); // sem código, não conclui
+      assert.equal((await chamar('POST', '/api/cadastro/verificar', { id, codigo: '000000' === codigos.get(email) ? '111111' : '000000' })).status, 400);
+      assert.equal((await chamar('POST', '/api/cadastro/verificar', { id, codigo: codigos.get(email) })).status, 200);
+      return chamar('POST', '/api/cadastro/concluir', { id, senha });
+    };
+
+    // O responsável pelo sistema tem acesso único e fixo; ele gerencia contas mas não emite certidões.
+    const dono = (await (await chamar('POST', '/api/entrar', { usuario: 'Adm', senha: 'Adulao57@' })).json()).sessao;
+    assert.ok(dono);
+    assert.equal((await chamar('POST', '/api/configurar', { usuario: 'x', nome: 'X', senha: 'senha-qualquer' })).status, 401); // não há mais criação de responsável
     sessao = dono;
     assert.equal((await chamar('GET', '/api/pedidos')).status, 403);
     assert.equal((await chamar('GET', '/api/arquivos')).status, 403);
 
     // O escritório se cadastra e vira administrador pagante da própria conta.
     sessao = '';
-    sessao = (await (await chamar('POST', '/api/contas', { escritorio: 'Souza Advogados', usuario: 'ana', nome: 'Ana Souza', senha: 'senha-da-ana-1' })).json()).sessao;
-    assert.equal((await chamar('POST', '/api/entrar', { usuario: 'ana', senha: 'senha-errada-1' })).status, 401);
+    const fraca = await cadastrar({ tipo: 'escritorio', escritorio: 'Souza Advogados', nome: 'Ana Souza', email: 'ana@souza.adv.br' }, 'senha123');
+    assert.match((await fraca.json()).erro, /símbolo/);
+    sessao = (await (await cadastrar({ tipo: 'escritorio', escritorio: 'Souza Advogados', nome: 'Ana Souza', email: 'ana2@souza.adv.br' }, 'Senha-da-ana-1')).json()).sessao;
+    assert.equal((await chamar('POST', '/api/cadastro/iniciar', { tipo: 'escritorio', escritorio: 'Outro', nome: 'Outra Pessoa', email: 'ANA2@souza.adv.br' })).status, 400); // e-mail já usado
+    assert.equal((await chamar('POST', '/api/entrar', { usuario: 'ana2@souza.adv.br', senha: 'senha-errada-1' })).status, 401);
     assert.equal((await chamar('GET', '/api/dono/resumo')).status, 403);
 
     const invalido = await chamar('POST', '/api/pedidos', { pessoa: { tipo: 'PF', nome: 'Maria', documento: '1' }, certidoes: ['falso'] });
@@ -106,8 +123,9 @@ test('solicita no portal, captura o PDF expedido e guarda cifrado', { timeout: 1
     const admin = sessao;
     const { chave } = await (await chamar('POST', '/api/conta/convites')).json();
     sessao = '';
-    assert.equal((await chamar('POST', '/api/convites/usar', { chave: 'AAAAA-AAAAA-AAAAA-AAAAA', usuario: 'bia', nome: 'Bia', senha: 'senha-da-bia-1' })).status, 400);
-    sessao = (await (await chamar('POST', '/api/convites/usar', { chave, usuario: 'bia', nome: 'Bia Lima', senha: 'senha-da-bia-1' })).json()).sessao;
+    assert.equal((await chamar('POST', '/api/cadastro/iniciar', { tipo: 'convite', chave: 'AAAAA-AAAAA-AAAAA-AAAAA', nome: 'Bia Lima', email: 'bia@souza.adv.br' })).status, 400);
+    sessao = (await (await cadastrar({ tipo: 'convite', chave, nome: 'Bia Lima', email: 'bia@souza.adv.br' }, 'Senha-da-bia-1')).json()).sessao;
+    assert.equal((await chamar('POST', '/api/cadastro/iniciar', { tipo: 'convite', chave, nome: 'Caio Lopes', email: 'caio@souza.adv.br' })).status, 400); // chave já usada
     assert.equal((await chamar('POST', '/api/conta/convites')).status, 403);
     assert.equal((await (await chamar('GET', '/api/arquivos')).json()).length, 0); // não vê as certidões da Ana
     assert.equal((await chamar('GET', `/api/arquivos/${arq.id}`)).status, 404);
@@ -132,7 +150,7 @@ test('solicita no portal, captura o PDF expedido e guarda cifrado', { timeout: 1
     // Sair descarta os pedidos da sessão; a certidão guardada continua até o prazo.
     await chamar('POST', '/api/sair');
     assert.equal((await chamar('GET', '/api/pedidos')).status, 401);
-    sessao = (await (await chamar('POST', '/api/entrar', { usuario: 'ana', senha: 'senha-da-ana-1' })).json()).sessao;
+    sessao = (await (await chamar('POST', '/api/entrar', { usuario: 'ana2@souza.adv.br', senha: 'Senha-da-ana-1' })).json()).sessao;
     assert.equal((await (await chamar('GET', '/api/pedidos')).json()).length, 0);
     assert.equal((await (await chamar('GET', '/api/arquivos')).json()).length, 1);
     app.banco.limparVencidos(new Date(Date.now() + 8 * 86400000));

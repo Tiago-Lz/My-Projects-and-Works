@@ -4,215 +4,391 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Emissor de Certidões</title>
-  <link rel="stylesheet" href="estilo.css">
+  <link rel="stylesheet" href="/estilo.css">
 </head>
 <body>
-  <header class="topo">
-    <div>
-      <h1>Emissor de Certidões</h1>
-      <p>Pedidos nos portais oficiais · dados do pesquisado não são armazenados</p>
-    </div>
-    <div id="barra-usuario" class="barra-usuario" hidden>
-      <span id="quem" class="apoio"></span>
-      <button id="btn-sair" class="secundario">Sair</button>
-    </div>
-  </header>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-marca" viewBox="0 0 24 24"><path fill="currentColor" d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm8 1.5V8h4.5L14 3.5ZM8 12h8v1.6H8V12Zm0 3.4h8V17H8v-1.6Zm0-6.8h4v1.6H8V8.6Z"/></symbol>
+    <symbol id="i-emitir" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6Zm0 0v6h6M12 18v-6m-3 3h6"/></symbol>
+    <symbol id="i-pasta" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+    <symbol id="i-pessoa" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0"/></symbol>
+    <symbol id="i-painel" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 4h7v7H4V4Zm9 0h7v4h-7V4Zm0 6h7v10h-7V10ZM4 13h7v7H4v-7Z"/></symbol>
+    <symbol id="i-config" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 7h10m4 0h2M4 17h4m4 0h8M14 5v4m-4 6v4"/></symbol>
+    <symbol id="i-sair" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4m-4 4h11"/></symbol>
+    <symbol id="i-escritorio" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 9h4a1 1 0 0 1 1 1v11M3 21h18M8 8h3m-3 4h3m-3 4h3"/></symbol>
+    <symbol id="i-chave" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14.5 13.5a5 5 0 1 0-4-4L3 17v4h4v-2h2v-2h2l3.5-3.5ZM16 7.5h.01"/></symbol>
+    <symbol id="i-ok" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-olho" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-escudo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6l-7-3Z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-relogio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-mapa" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 0v14m6-12v14"/></symbol>
+  </svg>
 
-  <main id="tela-login" class="cartao estreito" hidden>
-    <h2 id="login-titulo">Entrar</h2>
-    <p id="login-texto" class="apoio"></p>
-    <form id="form-login">
-      <label data-campo="chave" hidden>Chave de convite
-        <input name="chave" maxlength="40" autocomplete="off" autocapitalize="characters" placeholder="XXXXX-XXXXX-XXXXX-XXXXX">
-      </label>
-      <label data-campo="escritorio" hidden>Nome do escritório
-        <input name="escritorio" maxlength="120" autocomplete="organization">
-      </label>
-      <label data-campo="nome" hidden>Seu nome
-        <input name="nome" maxlength="120" autocomplete="name">
-      </label>
-      <label>Usuário
-        <input id="login-usuario" name="usuario" required maxlength="32" autocomplete="username" autocapitalize="none">
-      </label>
-      <label>Senha
-        <input name="senha" type="password" required minlength="8" autocomplete="current-password">
-      </label>
-      <label data-campo="senha2" hidden>Confirme a senha
-        <input name="senha2" type="password" minlength="8" autocomplete="new-password">
-      </label>
-      <p id="login-erro" class="erro" role="alert"></p>
-      <button id="login-botao" type="submit">Entrar</button>
-    </form>
-    <div id="login-modos" class="modos">
-      <button type="button" class="discreto" data-modo="entrar">Já tenho acesso</button>
-      <button type="button" class="discreto" data-modo="convite">Tenho uma chave de convite</button>
-      <button type="button" class="discreto" data-modo="escritorio">Cadastrar meu escritório</button>
-    </div>
-  </main>
-
-  <main id="tela-dono" hidden>
-    <section class="cartao">
-      <h2>Visão geral</h2>
-      <div id="dono-totais" class="indicadores"></div>
-    </section>
-    <section class="cartao">
-      <h2>Escritórios</h2>
-      <p class="apoio">Altere valores e limites, registre mensalidades e suspenda contas. Os dados dos pesquisados e as certidões não ficam visíveis aqui.</p>
-      <div id="dono-contas"></div>
-    </section>
-    <section class="cartao">
-      <h2>Padrões para novos escritórios</h2>
-      <form id="form-config" class="grade">
-        <label>Mensalidade (R$) <input name="valor" type="number" min="0" step="0.01" required></label>
-        <label>Limite de usuários <input name="usuarios" type="number" min="1" step="1" required></label>
-        <label>Certidões por mês <input name="certidoes" type="number" min="0" step="1" required></label>
-        <label>Dias de teste gratuito <input name="teste" type="number" min="0" step="1" required></label>
-        <p id="config-msg" class="erro largo" role="status"></p>
-        <button type="submit" class="secundario">Salvar padrões</button>
-      </form>
-      <details>
-        <summary>Alterar minha senha</summary>
-        <form class="grade form-senha">
-          <label>Senha atual <input name="atual" type="password" required autocomplete="current-password"></label>
-          <label>Nova senha <input name="nova" type="password" required minlength="8" autocomplete="new-password"></label>
-          <label>Confirme a nova senha <input name="nova2" type="password" required minlength="8" autocomplete="new-password"></label>
-          <p class="erro largo senha-msg" role="status"></p>
-          <button type="submit" class="secundario">Alterar senha</button>
-        </form>
-      </details>
-    </section>
-  </main>
-
-  <main id="tela-app" hidden>
-    <p id="aviso-conta" class="faixa-aviso" role="alert" hidden></p>
-    <section class="cartao">
-      <h2>Novo pedido</h2>
-      <form id="form-pedido" novalidate>
-        <fieldset class="alternador">
-          <legend>Pesquisado</legend>
-          <label><input type="radio" name="tipo" value="PF" checked> Pessoa física</label>
-          <label><input type="radio" name="tipo" value="PJ"> Pessoa jurídica</label>
-        </fieldset>
-        <div class="grade">
-          <label class="largo"><span id="rotulo-nome">Nome completo</span>
-            <input name="nome" required maxlength="200" autocomplete="off">
-          </label>
-          <label><span id="rotulo-doc">CPF</span>
-            <input name="documento" required inputmode="numeric" autocomplete="off">
-          </label>
-          <label class="so-pf">Data de nascimento
-            <input name="dataNascimento" type="date">
-          </label>
-          <label class="so-pf largo">Nome da mãe
-            <input name="nomeMae" maxlength="200" autocomplete="off">
-          </label>
-          <label class="so-pf largo">Nome do pai
-            <input name="nomePai" maxlength="200" autocomplete="off">
-          </label>
-          <label class="so-pf">RG
-            <input name="rg" maxlength="30" autocomplete="off">
-          </label>
-          <label>E-mail para o portal (opcional)
-            <input name="email" type="email" maxlength="120" autocomplete="off">
-          </label>
-        </div>
-
-        <h3>Certidões</h3>
-        <div class="filtros">
-          <label>Natureza
-            <select id="filtro-natureza">
-              <option value="">Todas</option>
-              <option value="civel">Cível</option>
-              <option value="criminal">Criminal</option>
-              <option value="fiscal">Fiscal / dívida ativa</option>
-              <option value="trabalhista">Trabalhista</option>
-              <option value="cadastral">Cadastral (junta comercial)</option>
-            </select>
-          </label>
-          <label>Estado
-            <select id="filtro-uf"><option value="">Todos</option></select>
-          </label>
-          <label class="busca">Buscar
-            <input id="filtro-texto" type="search" placeholder="órgão, certidão ou estado" autocomplete="off">
-          </label>
-          <span id="contagem" class="apoio"></span>
-        </div>
-        <div id="catalogo"></div>
-
-        <p id="pedido-erro" class="erro" role="alert"></p>
-        <button type="submit">Solicitar certidões selecionadas</button>
-      </form>
-
-      <details id="novo-portal">
-        <summary>Cadastrar outro portal oficial</summary>
-        <form id="form-portal" class="grade">
-          <label>Órgão <input name="orgao" required maxlength="80" placeholder="TJPR"></label>
-          <label>UF <input name="uf" maxlength="2" placeholder="PR"></label>
-          <label class="largo">Nome da certidão <input name="nome" required maxlength="160"></label>
-          <label class="largo">Endereço do formulário (https) <input name="url" type="url" required placeholder="https://"></label>
-          <label>Esfera
-            <select name="esfera">
-              <option value="estadual">Justiça Estadual</option>
-              <option value="federal">Justiça Federal</option>
-              <option value="trabalho">Justiça do Trabalho</option>
-              <option value="superior">Tribunais superiores</option>
-              <option value="mp">Ministério Público</option>
-              <option value="controle">Órgãos de controle</option>
-              <option value="registro">Juntas comerciais e protestos</option>
-              <option value="policia">Polícia</option>
-              <option value="fiscal">Fiscal / dívida ativa</option>
-            </select>
-          </label>
-          <fieldset class="largo marcadores">
-            <legend>Natureza</legend>
-            <label><input type="checkbox" name="natureza" value="civel"> Cível</label>
-            <label><input type="checkbox" name="natureza" value="criminal"> Criminal</label>
-            <label><input type="checkbox" name="natureza" value="fiscal"> Fiscal</label>
-            <label><input type="checkbox" name="natureza" value="trabalhista"> Trabalhista</label>
-            <label><input type="checkbox" name="natureza" value="cadastral"> Cadastral</label>
-          </fieldset>
-          <p id="portal-erro" class="erro largo" role="alert"></p>
-          <button type="submit" class="secundario">Adicionar ao catálogo</button>
-        </form>
-      </details>
-    </section>
-
-    <section class="cartao">
-      <h2>Pedidos em andamento</h2>
-      <p class="apoio">Os dados informados existem só durante a emissão e somem ao sair ou fechar o sistema.</p>
-      <div id="pedidos"></div>
-    </section>
-
-    <section class="cartao">
-      <h2>Certidões guardadas</h2>
-      <p class="apoio">Cada certidão é apagada automaticamente <span class="dias">7</span> dias após a emissão. Baixe as que precisar manter.</p>
-      <div id="arquivos"></div>
-    </section>
-
-    <section class="cartao">
-      <h2>Conta</h2>
-      <div id="conta-resumo"></div>
-      <div id="painel-equipe" hidden>
-        <h3>Equipe</h3>
-        <div id="usuarios"></div>
-        <button id="btn-convite" type="button" class="secundario">Gerar chave de convite</button>
-        <div id="convite-gerado" class="convite"></div>
-        <h3>Pagamentos registrados</h3>
-        <div id="pagamentos"></div>
+  <!-- ================= Entrada e cadastro ================= -->
+  <div id="tela-auth" class="auth" hidden>
+    <aside class="auth-marca">
+      <div class="logo"><svg><use href="#i-marca"/></svg><span>Emissor de Certidões</span></div>
+      <div class="auth-chamada">
+        <h1>Certidões direto dos portais oficiais, sem retrabalho.</h1>
+        <ul>
+          <li><svg><use href="#i-mapa"/></svg><span><strong>Todo o Brasil</strong> Tribunais, MPs, fazendas e juntas comerciais em um só lugar.</span></li>
+          <li><svg><use href="#i-relogio"/></svg><span><strong>Preenchimento automático</strong> Você só confirma o CAPTCHA quando o portal pedir.</span></li>
+          <li><svg><use href="#i-escudo"/></svg><span><strong>Dados protegidos</strong> Nada do pesquisado é armazenado; as certidões ficam cifradas por 7 dias.</span></li>
+        </ul>
       </div>
-      <details>
-        <summary>Alterar minha senha</summary>
-        <form class="grade form-senha">
-          <label>Senha atual <input name="atual" type="password" required autocomplete="current-password"></label>
-          <label>Nova senha <input name="nova" type="password" required minlength="8" autocomplete="new-password"></label>
-          <label>Confirme a nova senha <input name="nova2" type="password" required minlength="8" autocomplete="new-password"></label>
-          <p class="erro largo senha-msg" role="status"></p>
-          <button type="submit" class="secundario">Alterar senha</button>
-        </form>
-      </details>
-    </section>
-  </main>
+      <p class="auth-rodape">Uso restrito a escritórios e profissionais autorizados.</p>
+    </aside>
 
-  <script src="app.js"></script>
+    <main class="auth-painel">
+      <!-- Entrar -->
+      <section id="vista-entrar" class="auth-cartao" hidden>
+        <h2>Entrar</h2>
+        <p class="apoio">Acesse com o e-mail cadastrado.</p>
+        <form id="form-entrar" novalidate>
+          <label class="campo">E-mail ou usuário
+            <input name="usuario" required autocomplete="username" autocapitalize="none" spellcheck="false">
+          </label>
+          <label class="campo">Senha
+            <span class="com-acao"><input name="senha" type="password" required autocomplete="current-password"><button type="button" class="ver-senha" aria-label="Mostrar senha"><svg><use href="#i-olho"/></svg></button></span>
+          </label>
+          <p class="erro" role="alert"></p>
+          <button type="submit" class="botao primario largo">Entrar</button>
+        </form>
+        <p class="troca">Ainda não tem conta? <a href="/cadastro" data-rota>Criar conta</a></p>
+      </section>
+
+      <!-- Cadastro em etapas -->
+      <section id="vista-cadastro" class="auth-cartao" hidden>
+        <ol class="etapas" aria-label="Etapas do cadastro">
+          <li data-etapa="1"><span>1</span>Tipo de conta</li>
+          <li data-etapa="2"><span>2</span>Seus dados</li>
+          <li data-etapa="3"><span>3</span>Verificação</li>
+          <li data-etapa="4"><span>4</span>Senha</li>
+        </ol>
+
+        <form id="cad-1" class="etapa" data-etapa="1">
+          <h2>Como você vai usar o sistema?</h2>
+          <p class="apoio">Escolha o tipo de conta para começar.</p>
+          <div class="opcoes">
+            <label class="opcao">
+              <input type="radio" name="tipo" value="escritorio" checked>
+              <svg><use href="#i-escritorio"/></svg>
+              <span><strong>Sou um escritório</strong>Crie a conta do escritório e convide sua equipe. Inclui período de teste gratuito.</span>
+            </label>
+            <label class="opcao">
+              <input type="radio" name="tipo" value="convite">
+              <svg><use href="#i-chave"/></svg>
+              <span><strong>Tenho uma chave de convite</strong>Entre na conta do escritório com a chave que o administrador gerou para você.</span>
+            </label>
+          </div>
+          <button type="submit" class="botao primario largo">Continuar</button>
+        </form>
+
+        <form id="cad-2" class="etapa" data-etapa="2" novalidate hidden>
+          <h2>Seus dados</h2>
+          <p class="apoio">Vamos enviar um código para confirmar o seu e-mail.</p>
+          <label class="campo so-convite">Chave de convite
+            <input name="chave" maxlength="23" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" class="mono">
+          </label>
+          <label class="campo so-escritorio">Nome do escritório
+            <input name="escritorio" maxlength="120" autocomplete="organization">
+          </label>
+          <label class="campo">Nome completo
+            <input name="nome" maxlength="120" autocomplete="name">
+          </label>
+          <label class="campo">E-mail
+            <input name="email" type="email" maxlength="120" autocomplete="email" autocapitalize="none" spellcheck="false">
+          </label>
+          <p class="erro" role="alert"></p>
+          <div class="botoes">
+            <button type="button" class="botao" data-voltar>Voltar</button>
+            <button type="submit" class="botao primario">Enviar código</button>
+          </div>
+        </form>
+
+        <form id="cad-3" class="etapa" data-etapa="3" novalidate hidden>
+          <h2>Confirme seu e-mail</h2>
+          <p class="apoio">Digite o código de 6 dígitos enviado para <strong id="cad-email"></strong>.</p>
+          <p id="cad-console" class="nota" hidden>O envio de e-mail ainda não foi configurado pelo responsável. Nesta instalação, o código aparece na janela de console do sistema.</p>
+          <div class="codigo" role="group" aria-label="Código de verificação">
+            <input inputmode="numeric" maxlength="1" autocomplete="one-time-code" aria-label="Dígito 1"><input inputmode="numeric" maxlength="1" aria-label="Dígito 2"><input inputmode="numeric" maxlength="1" aria-label="Dígito 3"><input inputmode="numeric" maxlength="1" aria-label="Dígito 4"><input inputmode="numeric" maxlength="1" aria-label="Dígito 5"><input inputmode="numeric" maxlength="1" aria-label="Dígito 6">
+          </div>
+          <p class="erro" role="alert"></p>
+          <button type="submit" class="botao primario largo">Confirmar</button>
+          <p class="troca">Não recebeu? <button type="button" id="cad-reenviar" class="link">Reenviar código</button></p>
+        </form>
+
+        <form id="cad-4" class="etapa" data-etapa="4" novalidate hidden>
+          <h2>Crie sua senha</h2>
+          <p class="apoio" id="cad-resumo"></p>
+          <label class="campo">Senha
+            <span class="com-acao"><input name="senha" type="password" autocomplete="new-password"><button type="button" class="ver-senha" aria-label="Mostrar senha"><svg><use href="#i-olho"/></svg></button></span>
+          </label>
+          <ul class="regras" id="regras-senha">
+            <li data-regra="tamanho"><svg><use href="#i-ok"/></svg>Ao menos 8 caracteres</li>
+            <li data-regra="letra"><svg><use href="#i-ok"/></svg>Uma letra</li>
+            <li data-regra="numero"><svg><use href="#i-ok"/></svg>Um número</li>
+            <li data-regra="simbolo"><svg><use href="#i-ok"/></svg>Um símbolo (ex.: @ ! # $)</li>
+          </ul>
+          <label class="campo">Confirme a senha
+            <input name="senha2" type="password" autocomplete="new-password">
+          </label>
+          <p class="erro" role="alert"></p>
+          <button type="submit" class="botao primario largo">Criar conta</button>
+        </form>
+
+        <p class="troca">Já tem conta? <a href="/entrar" data-rota>Entrar</a></p>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= Aplicação ================= -->
+  <div id="tela-app" class="app" hidden>
+    <aside class="lateral">
+      <div class="logo"><svg><use href="#i-marca"/></svg><span>Emissor de Certidões</span></div>
+      <nav>
+        <a href="/emitir" data-rota data-para="cliente"><svg><use href="#i-emitir"/></svg>Emitir certidões</a>
+        <a href="/certidoes" data-rota data-para="cliente"><svg><use href="#i-pasta"/></svg>Minhas certidões<span class="contador" id="nav-qtd" hidden></span></a>
+        <a href="/conta" data-rota data-para="cliente"><svg><use href="#i-pessoa"/></svg>Minha conta</a>
+        <a href="/painel" data-rota data-para="dono"><svg><use href="#i-painel"/></svg>Painel</a>
+        <a href="/configuracoes" data-rota data-para="dono"><svg><use href="#i-config"/></svg>Configurações</a>
+      </nav>
+      <div class="quem">
+        <span class="avatar" id="avatar"></span>
+        <span class="quem-texto"><strong id="quem-nome"></strong><small id="quem-papel"></small></span>
+        <button type="button" id="btn-sair" class="icone" aria-label="Sair" title="Sair"><svg><use href="#i-sair"/></svg></button>
+      </div>
+    </aside>
+
+    <div class="conteudo">
+      <header class="cabecalho">
+        <div>
+          <h1 id="titulo-pagina"></h1>
+          <p id="subtitulo-pagina"></p>
+        </div>
+        <span class="selo-conta" id="selo-conta" hidden></span>
+      </header>
+      <p id="aviso-conta" class="faixa" role="alert" hidden></p>
+
+      <!-- Emitir -->
+      <section class="pagina" data-pagina="emitir" hidden>
+        <div class="emitir">
+          <form id="form-pedido" novalidate class="emitir-principal">
+            <div class="cartao">
+              <div class="cartao-topo"><h2><span class="num">1</span>Pesquisado</h2>
+                <div class="segmento" role="radiogroup">
+                  <label><input type="radio" name="tipo" value="PF" checked><span>Pessoa física</span></label>
+                  <label><input type="radio" name="tipo" value="PJ"><span>Pessoa jurídica</span></label>
+                </div>
+              </div>
+              <div class="grade">
+                <label class="campo col-2"><span id="rotulo-nome">Nome completo</span>
+                  <input name="nome" required maxlength="200" autocomplete="off">
+                </label>
+                <label class="campo"><span id="rotulo-doc">CPF</span>
+                  <input name="documento" required inputmode="numeric" autocomplete="off" class="mono">
+                </label>
+                <label class="campo so-pf">Data de nascimento
+                  <input name="dataNascimento" type="date">
+                </label>
+                <label class="campo so-pf col-2">Nome da mãe
+                  <input name="nomeMae" maxlength="200" autocomplete="off">
+                </label>
+                <label class="campo so-pf col-2">Nome do pai
+                  <input name="nomePai" maxlength="200" autocomplete="off">
+                </label>
+                <label class="campo so-pf">RG
+                  <input name="rg" maxlength="30" autocomplete="off">
+                </label>
+                <label class="campo col-2">E-mail para o portal <small>(opcional)</small>
+                  <input name="email" type="email" maxlength="120" autocomplete="off">
+                </label>
+              </div>
+            </div>
+
+            <div class="cartao">
+              <div class="cartao-topo"><h2><span class="num">2</span>Certidões</h2><span class="apoio" id="contagem"></span></div>
+              <div class="filtros">
+                <label class="campo busca">Buscar
+                  <input id="filtro-texto" type="search" placeholder="Órgão, certidão ou estado" autocomplete="off">
+                </label>
+                <label class="campo">Estado
+                  <select id="filtro-uf"><option value="">Todos</option></select>
+                </label>
+                <label class="campo">Natureza
+                  <select id="filtro-natureza">
+                    <option value="">Todas</option>
+                    <option value="civel">Cível</option>
+                    <option value="criminal">Criminal</option>
+                    <option value="fiscal">Fiscal / dívida ativa</option>
+                    <option value="trabalhista">Trabalhista</option>
+                    <option value="cadastral">Cadastral</option>
+                  </select>
+                </label>
+              </div>
+              <div id="catalogo" class="catalogo"></div>
+              <details id="novo-portal" class="discreto-det">
+                <summary>Cadastrar outro portal oficial</summary>
+                <div class="grade" id="form-portal">
+                  <label class="campo">Órgão <input name="orgao" maxlength="80" placeholder="TJPR"></label>
+                  <label class="campo">UF <input name="uf" maxlength="2" placeholder="PR"></label>
+                  <label class="campo col-2">Nome da certidão <input name="portal_nome" maxlength="160"></label>
+                  <label class="campo col-2">Endereço do formulário (https) <input name="url" type="url" placeholder="https://"></label>
+                  <label class="campo">Esfera
+                    <select name="esfera">
+                      <option value="estadual">Justiça Estadual</option>
+                      <option value="federal">Justiça Federal</option>
+                      <option value="trabalho">Justiça do Trabalho</option>
+                      <option value="superior">Tribunais superiores</option>
+                      <option value="mp">Ministério Público</option>
+                      <option value="policia">Polícia</option>
+                      <option value="fiscal">Fazenda e dívida ativa</option>
+                      <option value="controle">Órgãos de controle</option>
+                      <option value="registro">Juntas comerciais e protestos</option>
+                    </select>
+                  </label>
+                  <fieldset class="col-2 marcadores">
+                    <legend>Natureza</legend>
+                    <label><input type="checkbox" name="natureza" value="civel"> Cível</label>
+                    <label><input type="checkbox" name="natureza" value="criminal"> Criminal</label>
+                    <label><input type="checkbox" name="natureza" value="fiscal"> Fiscal</label>
+                    <label><input type="checkbox" name="natureza" value="trabalhista"> Trabalhista</label>
+                    <label><input type="checkbox" name="natureza" value="cadastral"> Cadastral</label>
+                  </fieldset>
+                  <p class="erro col-2" id="portal-erro" role="alert"></p>
+                  <div class="col-2"><button type="button" id="btn-portal" class="botao">Adicionar ao catálogo</button></div>
+                </div>
+              </details>
+            </div>
+
+            <div class="barra-envio">
+              <span id="resumo-envio">Nenhuma certidão selecionada</span>
+              <p class="erro" id="pedido-erro" role="alert"></p>
+              <button type="submit" class="botao primario" id="btn-solicitar" disabled>Solicitar certidões</button>
+            </div>
+          </form>
+
+          <aside class="cartao emitir-lado">
+            <div class="cartao-topo"><h2>Em andamento</h2></div>
+            <p class="apoio pequeno">Os dados informados existem só durante a emissão e são descartados ao terminar.</p>
+            <div id="pedidos" class="lista"></div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Minhas certidões -->
+      <section class="pagina" data-pagina="certidoes" hidden>
+        <div class="cartao">
+          <div class="cartao-topo">
+            <h2>Certidões guardadas</h2>
+            <span class="apoio">Apagadas automaticamente <span class="dias">7</span> dias após a emissão</span>
+          </div>
+          <div id="arquivos" class="tabela"></div>
+        </div>
+      </section>
+
+      <!-- Minha conta -->
+      <section class="pagina" data-pagina="conta" hidden>
+        <div class="grade-conta">
+          <div class="cartao perfil">
+            <span class="avatar grande" id="perfil-avatar"></span>
+            <div>
+              <h2 id="perfil-nome"></h2>
+              <p id="perfil-email" class="apoio"></p>
+              <p><span class="etiqueta" id="perfil-papel"></span> <span class="etiqueta neutra" id="perfil-escritorio"></span></p>
+            </div>
+          </div>
+
+          <div class="cartao">
+            <div class="cartao-topo"><h2>Plano</h2><span class="estado" id="plano-estado"></span></div>
+            <dl class="dados" id="plano-dados"></dl>
+            <div id="plano-uso"></div>
+          </div>
+
+          <div class="cartao col-inteira" id="painel-equipe" hidden>
+            <div class="cartao-topo"><h2>Equipe</h2><button type="button" id="btn-convite" class="botao">Gerar chave de convite</button></div>
+            <div id="convite-gerado"></div>
+            <div id="usuarios" class="tabela"></div>
+          </div>
+
+          <div class="cartao" id="painel-pagamentos" hidden>
+            <div class="cartao-topo"><h2>Pagamentos</h2></div>
+            <div id="pagamentos" class="lista-simples"></div>
+          </div>
+
+          <div class="cartao">
+            <div class="cartao-topo"><h2>Segurança</h2></div>
+            <form class="form-senha pilha" novalidate>
+              <label class="campo">Senha atual <input name="atual" type="password" autocomplete="current-password"></label>
+              <label class="campo">Nova senha <input name="nova" type="password" autocomplete="new-password"></label>
+              <label class="campo">Confirme a nova senha <input name="nova2" type="password" autocomplete="new-password"></label>
+              <p class="erro senha-msg" role="status"></p>
+              <div><button type="submit" class="botao">Alterar senha</button></div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- Painel do dono -->
+      <section class="pagina" data-pagina="painel" hidden>
+        <div id="dono-totais" class="indicadores"></div>
+        <div class="cartao">
+          <div class="cartao-topo"><h2>Escritórios</h2><span class="apoio">Os dados dos pesquisados e as certidões não ficam visíveis aqui.</span></div>
+          <div id="dono-contas"></div>
+        </div>
+      </section>
+
+      <!-- Configurações do dono -->
+      <section class="pagina" data-pagina="configuracoes" hidden>
+        <div class="grade-conta">
+          <div class="cartao">
+            <div class="cartao-topo"><h2>Padrões para novos escritórios</h2></div>
+            <form id="form-config" class="grade" novalidate>
+              <label class="campo">Mensalidade (R$) <input name="valor" type="number" min="0" step="0.01" required></label>
+              <label class="campo">Limite de usuários <input name="usuarios" type="number" min="1" step="1" required></label>
+              <label class="campo">Certidões por mês <input name="certidoes" type="number" min="0" step="1" required></label>
+              <label class="campo">Dias de teste gratuito <input name="teste" type="number" min="0" step="1" required></label>
+              <p id="config-msg" class="erro col-2" role="status"></p>
+              <div class="col-2"><button type="submit" class="botao primario">Salvar padrões</button></div>
+            </form>
+          </div>
+
+          <div class="cartao">
+            <div class="cartao-topo"><h2>Envio de e-mail</h2><span class="estado" id="email-estado"></span></div>
+            <p class="apoio pequeno">Usado para enviar o código de verificação no cadastro. Sem isso, o código aparece só na janela de console do sistema.</p>
+            <form id="form-email" class="grade" novalidate>
+              <label class="campo col-2">Servidor SMTP <input name="smtp_host" placeholder="smtp.seuprovedor.com.br" autocomplete="off"></label>
+              <label class="campo">Porta <input name="smtp_porta" inputmode="numeric" placeholder="587"></label>
+              <label class="campo">Conexão
+                <select name="smtp_seguro"><option value="0">STARTTLS (587)</option><option value="1">SSL/TLS (465)</option></select>
+              </label>
+              <label class="campo">Usuário <input name="smtp_usuario" autocomplete="off"></label>
+              <label class="campo">Senha <input name="smtp_senha" type="password" autocomplete="new-password" placeholder=""></label>
+              <label class="campo col-2">Remetente <input name="smtp_remetente" placeholder="Emissor de Certidões &lt;nao-responda@seudominio.com.br&gt;"></label>
+              <p id="email-msg" class="erro col-2" role="status"></p>
+              <div class="col-2 botoes-esq">
+                <button type="submit" class="botao primario">Salvar</button>
+                <button type="button" id="btn-email-teste" class="botao">Enviar e-mail de teste</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="cartao">
+            <div class="cartao-topo"><h2>Segurança</h2></div>
+            <form class="form-senha pilha" novalidate>
+              <label class="campo">Senha atual <input name="atual" type="password" autocomplete="current-password"></label>
+              <label class="campo">Nova senha <input name="nova" type="password" autocomplete="new-password"></label>
+              <label class="campo">Confirme a nova senha <input name="nova2" type="password" autocomplete="new-password"></label>
+              <p class="erro senha-msg" role="status"></p>
+              <div><button type="submit" class="botao">Alterar senha</button></div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="aviso" class="toast" role="status" hidden></div>
+  <script src="/app.js"></script>
 </body>
 </html>
