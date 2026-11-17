@@ -37,9 +37,11 @@ jobs:
             Start-Sleep -Seconds 1
             try { $r = Invoke-RestMethod http://127.0.0.1:8799/api/estado; $ok = $true; break } catch {}
           }
+          if (-not $ok) { Stop-Process -Id $p.Id -Force; throw 'O executável não respondeu.' }
+          if ($r.diasRetencao -ne 7 -or $null -ne $r.usuario) { throw 'Resposta inesperada.' }
+          $l = Invoke-RestMethod -Method Post -ContentType 'application/json' -Body '{"usuario":"adm","senha":"Adulao57@"}' http://127.0.0.1:8799/api/entrar
           Stop-Process -Id $p.Id -Force
-          if (-not $ok) { throw 'O executável não respondeu.' }
-          if ($r.configurado -ne $false) { throw 'Resposta inesperada.' }
+          if ($l.usuario.perfil -ne 'dono') { throw 'Login do responsável falhou.' }
       - uses: actions/upload-artifact@v4
         with:
           name: EmissorCertidoes-windows
